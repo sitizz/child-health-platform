@@ -58,27 +58,51 @@ def environment_risk(
     heat_score = 0
     respiratory_score = 0
     dengue_score = 0
+    flood_score = 0
+
+    heat_reasons = []
+    respiratory_reasons = []
+    dengue_reasons = []
+    flood_reasons = []
 
     # Heat
     if temperature >= 38:
         heat_score += 2
+        heat_reasons.append("Extreme temperature detected")
     elif temperature >= 35:
         heat_score += 1
+        heat_reasons.append("High temperature detected")
 
     if humidity >= 70:
         heat_score += 1
+        heat_reasons.append("Persistent high humidity")
 
     # Respiratory
     if pm25 >= 35 or pm10 >= 100:
         respiratory_score += 2
+        respiratory_reasons.append("Poor air quality detected")
     elif pm25 >= 15 or pm10 >= 50:
         respiratory_score += 1
+        respiratory_reasons.append("Moderate air pollution detected")
 
     # Dengue (simple proxy)
     if temperature >= 25 and humidity >= 70:
         dengue_score += 1
+        dengue_reasons.append("Warm humid conditions support mosquito activity")
     if rainfall > 0:
         dengue_score += 1
+        dengue_reasons.append("Rainfall may increase standing water exposure")
+    if rainfall >= 20:
+        dengue_score += 1
+        dengue_reasons.append("Heavy rainfall increases mosquito breeding risk")
+    
+     # Flood risk
+    if rainfall >= 30:
+        flood_score += 2
+        flood_reasons.append("Severe rainfall detected")
+    elif rainfall >= 15:
+        flood_score += 1
+        flood_reasons.append("Increased rainfall accumulation detected")
 
     # Vulnerable group boost
     if age_group == "under5":
@@ -90,8 +114,9 @@ def environment_risk(
     heat_risk = classify_risk(heat_score)
     respiratory_risk = classify_risk(respiratory_score)
     dengue_risk = classify_risk(dengue_score)
+    flood_risk = classify_risk(flood_score)
 
-    risks = [heat_risk, respiratory_risk, dengue_risk]
+    risks = [heat_risk, respiratory_risk, dengue_risk, flood_risk]
 
     daily_temp = weather["daily"]["temperature_2m_max"]
     daily_rain = weather["daily"]["precipitation_sum"]
@@ -233,8 +258,15 @@ def environment_risk(
             "heat_stress": heat_risk,
             "respiratory": respiratory_risk,
             "dengue": dengue_risk,
+             "flood": flood_risk,
         },
-                "predictive_domains": {
+        "risk_reasons": {
+            "heat_stress": heat_reasons,
+            "respiratory": respiratory_reasons,
+            "dengue": dengue_reasons,
+            "flood": flood_reasons,
+        },
+        "predictive_domains": {
             "heat_stress": predictive_heat_risk,
             "respiratory": predictive_respiratory_risk,
             "dengue": predictive_dengue_risk,
