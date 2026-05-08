@@ -142,33 +142,7 @@ export default function HomeScreen() {
             <Text style={styles.cardTitle}>Recommended Action</Text>
             <Text style={styles.actionText}>{result.action}</Text>
           </View>
-
-          <Text style={styles.sectionTitle}>Predictive Risk Forecast</Text>
-
-        {result.forecast.map((day: any) => (
-          <View key={day.day} style={styles.forecastCard}>
-            <View style={styles.forecastHeader}>
-              <Text style={styles.forecastDay}>Day {day.day}</Text>
-
-              <Text
-                style={[
-                  styles.forecastBadge,
-                  { color: riskTextColour(day.predicted_risk) },
-                ]}
-              >
-                {day.predicted_risk.toUpperCase()}
-              </Text>
-            </View>
-
-            <View style={styles.forecastGrid}>
-              <Text style={styles.metricLabel}>Max temperature</Text>
-              <Text style={styles.metricValue}>{day.max_temperature}°C</Text>
-
-              <Text style={styles.metricLabel}>Rainfall</Text>
-              <Text style={styles.metricValue}>{day.rainfall} mm</Text>
-            </View>
-          </View>
-        ))}
+          
         </View>
       )}
     </ScrollView>

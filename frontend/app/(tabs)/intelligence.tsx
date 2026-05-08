@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Location from 'expo-location';
 
 const API_URL = 'https://child-health-platform.onrender.com';
 
@@ -13,9 +14,23 @@ export default function RiskIntelligenceScreen() {
 
   async function fetchRiskData() {
     try {
-      const response = await fetch(
-        `${API_URL}/environment-risk?lat=3.1390&lon=101.6869&age_group=under5`
-      );
+      const { status } = await Location.requestForegroundPermissionsAsync();
+
+if (status !== 'granted') {
+  alert('Location permission is needed to check local environmental risk.');
+  return;
+}
+
+const location = await Location.getCurrentPositionAsync({
+  accuracy: Location.Accuracy.Balanced,
+});
+
+const lat = location.coords.latitude;
+const lon = location.coords.longitude;
+
+const response = await fetch(
+  `${API_URL}/environment-risk?lat=${lat}&lon=${lon}&age_group=under5`
+);
 
       const result = await response.json();
       setData(result);
@@ -54,9 +69,20 @@ export default function RiskIntelligenceScreen() {
         <Text style={styles.sectionTitle}>Risk Domains</Text>
 
         <View style={styles.grid}>
-          <RiskCard title="Heat Stress" value={data.risks.heat_stress} />
-          <RiskCard title="Respiratory Burden" value={data.risks.respiratory} />
-          <RiskCard title="Dengue Watch" value={data.risks.dengue} />
+            <RiskCard
+              title="Heat Stress"
+              value={data.predictive_domains.heat_stress}
+            />
+
+            <RiskCard
+              title="Respiratory Burden"
+              value={data.predictive_domains.respiratory}
+            />
+
+            <RiskCard
+              title="Dengue Watch"
+              value={data.predictive_domains.dengue}
+            />
         </View>
       </View>
 
