@@ -44,39 +44,44 @@ export default function RegionalRiskMapScreen() {
         { label: 'East zone', lat, lon: lon + 0.05 },
         { label: 'West zone', lat, lon: lon - 0.05 },
       ];
+    const results = await Promise.allSettled(
+  samplePoints.map(async point => {
+    const response = await fetch(
+      `${API_URL}/environment-risk?lat=${point.lat}&lon=${point.lon}&age_group=under5`
+    );
 
-      const results = await Promise.all(
-        samplePoints.map(async point => {
-          const response = await fetch(
-            `${API_URL}/environment-risk?lat=${point.lat}&lon=${point.lon}&age_group=under5`
-          );
+    const text = await response.text();
 
-          const text = await response.text();
+    if (!response.ok) {
+      throw new Error(text);
+    }
 
-          if (!response.ok) {
-            throw new Error(text);
-          }
+    const data = JSON.parse(text);
 
-          const data = JSON.parse(text);
-          const topThreat = getTopThreat(data.risks);
-          const reasons = data.risk_reasons || {};
+    const topThreat = getTopThreat(data.risks);
+    const reasons = data.risk_reasons || {};
 
-          return {
-            ...point,
-            priority_alert: data.priority_alert,
-            top_threat: getTopThreat(data.risks),
-            reason:
-                reasons.heat_stress?.[0] ||
-                reasons.respiratory?.[0] ||
-                reasons.dengue?.[0] ||
-                reasons.flood?.[0] ||
-                'No major risk driver detected',
-            action: data.action,
-          };
-        })
-      );
+    return {
+      ...point,
+      priority_alert: data.priority_alert,
+      top_threat: topThreat,
+      reason:
+        reasons.heat_stress?.[0] ||
+        reasons.respiratory?.[0] ||
+        reasons.dengue?.[0] ||
+        reasons.flood?.[0] ||
+        'No major risk driver detected',
+      action: data.action,
+    };
+  })
+);
 
-      setPoints(results);
+const successfulResults = results
+  .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled')
+  .map(result => result.value);
+
+setPoints(successfulResults);
+
     } catch (error) {
       console.error('Regional map error:', error);
       alert('Unable to load regional risk map.');
@@ -95,6 +100,12 @@ export default function RegionalRiskMapScreen() {
     if (risks.dengue === 'moderate') return 'Dengue';
 
     return 'Low combined risk';
+  }
+
+  function riskRank(risk: string) {
+    if (risk === 'high') return 3;
+    if (risk === 'moderate') return 2;
+    return 1;
   }
 
   function markerColour(risk: string) {
@@ -140,6 +151,24 @@ export default function RegionalRiskMapScreen() {
           <Text style={styles.legend}>Orange: Moderate</Text>
           <Text style={styles.legend}>Green: Low</Text>
         </View>
+
+        <View style={styles.priorityList}>
+         <Text style={styles.priorityTitle}>Regional Priority Zones</Text>
+
+         {[...points]
+             .sort((a, b) => riskRank(b.priority_alert) - riskRank(a.priority_alert))
+             .slice(0, 3)
+             .map((point, index) => (
+             <View key={index} style={styles.priorityItem}>
+                 <Text style={styles.priorityZone}>
+                 {index + 1}. {point.label} — {point.priority_alert.toUpperCase()}
+                 </Text>
+                 <Text style={styles.priorityReason}>
+                 Driver: {point.reason}
+                 </Text>
+              </View>
+             ))}
+         </View>
       </View>
     </View>
   );
@@ -193,4 +222,33 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#374151',
   },
+  priorityList: {
+  marginTop: 14,
+  borderTopWidth: 1,
+  borderTopColor: '#E5E7EB',
+  paddingTop: 12,
+},
+
+priorityTitle: {
+  fontSize: 14,
+  fontWeight: '900',
+  color: '#111827',
+  marginBottom: 8,
+},
+
+priorityItem: {
+  marginBottom: 8,
+},
+
+priorityZone: {
+  fontSize: 13,
+  fontWeight: '800',
+  color: '#111827',
+},
+
+priorityReason: {
+  fontSize: 12,
+  color: '#6B7280',
+  marginTop: 2,
+},
 });

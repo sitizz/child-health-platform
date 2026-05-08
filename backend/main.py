@@ -235,6 +235,65 @@ def environment_risk(
         action = "⚠️ MODERATE RISK: Limit outdoor activity, encourage hydration, monitor symptoms."
     else:
         action = "✅ LOW RISK: Safe to continue normal activities with basic precautions."
+    
+    # Structured recommended actions
+    if priority_alert == "high":
+        immediate_action = (
+            "Reduce outdoor exposure immediately and begin active monitoring."
+        )
+    elif priority_alert == "moderate":
+        immediate_action = (
+            "Limit prolonged outdoor exposure and monitor symptoms closely."
+        )
+    else:
+        immediate_action = (
+            "Continue normal activities with routine environmental precautions."
+        )
+
+    caregiver_action = []
+
+    if heat_risk != "low":
+        caregiver_action.append(
+            "Encourage hydration, cooling, shade, and reduced heat exposure."
+        )
+
+    if respiratory_risk != "low":
+        caregiver_action.append(
+            "Reduce exposure to polluted air and monitor breathing symptoms."
+        )
+
+    if dengue_risk != "low":
+        caregiver_action.append(
+            "Use mosquito protection and remove standing water nearby."
+        )
+
+    if flood_risk != "low":
+        caregiver_action.append(
+            "Avoid contaminated floodwater and monitor for water-borne illness symptoms."
+        )
+
+    if len(caregiver_action) == 0:
+        caregiver_action.append(
+            "Maintain normal environmental health precautions."
+        )
+
+    recommended_action = {
+        "immediate": immediate_action,
+
+        "caregiver": caregiver_action,
+
+        "school": (
+            "Review outdoor activities, hydration access, and child monitoring procedures."
+        ),
+
+        "community": (
+            "Share local environmental risk updates with caregivers and community responders."
+        ),
+
+        "when_to_escalate": (
+            "Seek urgent medical attention if severe breathing difficulty, persistent fever, confusion, seizures, dehydration, or worsening symptoms occur."
+        )
+    }
 
         # 📈 Trend direction logic
     high_days = sum(
@@ -362,6 +421,7 @@ def environment_risk(
         "priority_alert": priority_alert,
         "forecast": forecast_risks,
         "action": action,
+        "recommended_action": recommended_action,
         "trend": {
             "direction": trend_direction,
             "message": trend_message,
