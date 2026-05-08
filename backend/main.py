@@ -22,10 +22,12 @@ def environment_risk(
 ):
     # 🌍 Fetch weather data
     weather_url = (
-        f"https://api.open-meteo.com/v1/forecast"
-        f"?latitude={lat}&longitude={lon}"
-        f"&current=temperature_2m,relative_humidity_2m,precipitation"
-    )
+    f"https://api.open-meteo.com/v1/forecast"
+    f"?latitude={lat}&longitude={lon}"
+    f"&current=temperature_2m,relative_humidity_2m,precipitation"
+    f"&daily=temperature_2m_max,precipitation_sum"
+    f"&forecast_days=3"
+)
 
     air_url = (
         f"https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -88,6 +90,30 @@ def environment_risk(
 
     risks = [heat_risk, respiratory_risk, dengue_risk]
 
+    daily_temp = weather["daily"]["temperature_2m_max"]
+    daily_rain = weather["daily"]["precipitation_sum"]
+
+    forecast_risks = []
+
+    for day in range(3):
+        forecast_score = 0
+
+        if daily_temp[day] >= 35:
+            forecast_score += 1
+
+        if daily_rain[day] > 0:
+            forecast_score += 1
+
+        if age_group == "under5":
+            forecast_score += 1
+
+        forecast_risks.append({
+            "day": day + 1,
+            "max_temperature": daily_temp[day],
+            "rainfall": daily_rain[day],
+            "predicted_risk": classify_risk(forecast_score)
+        })
+
     # 🚨 Priority alert
     if "high" in risks:
         priority_alert = "high"
@@ -121,5 +147,6 @@ def environment_risk(
             "dengue": dengue_risk,
         },
         "priority_alert": priority_alert,
+        "forecast": forecast_risks,
         "action": action,
     }
