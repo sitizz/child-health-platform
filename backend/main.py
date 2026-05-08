@@ -3,7 +3,9 @@ import requests
 import concurrent.futures
 
 app = FastAPI()
-
+@app.get("/")
+def home():
+    return {"status": "Child Health Platform backend is running"}
 
 def classify_risk(score):
     if score >= 3:

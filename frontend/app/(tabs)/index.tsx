@@ -27,7 +27,7 @@ export default function HomeScreen() {
       const lon = location.coords.longitude;
 
       const response = await fetch(
-        `http://10.27.185.152:8000/environment-risk?lat=${lat}&lon=${lon}&age_group=under5`
+        `https://child-health-platform.onrender.com/environment-risk?lat=${lat}&lon=${lon}&age_group=under5`
       );
 
       const data = await response.json();
