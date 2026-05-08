@@ -116,43 +116,43 @@ def environment_risk(
             "rainfall": daily_rain[day],
             "predicted_risk": classify_risk(forecast_score)
         })
-            # Predictive domain scoring
-            predictive_heat_score = 0
-            predictive_dengue_score = 0
-            predictive_respiratory_score = respiratory_score
+    # Predictive domain scoring
+    predictive_heat_score = 0
+    predictive_dengue_score = 0
+    predictive_respiratory_score = respiratory_score
 
-            # Heat prediction using highest forecast temperature
-            max_forecast_temp = max(daily_temp)
+    # Heat prediction using highest forecast temperature
+    max_forecast_temp = max(daily_temp)
 
-            if max_forecast_temp >= 38:
-                predictive_heat_score += 2
-            elif max_forecast_temp >= 35:
-                predictive_heat_score += 1
+    if max_forecast_temp >= 38:
+        predictive_heat_score += 2
+    elif max_forecast_temp >= 35:
+        predictive_heat_score += 1
 
-            if humidity >= 70:
-                predictive_heat_score += 1
+    if humidity >= 70:
+        predictive_heat_score += 1
 
-            # Dengue prediction using rainfall and warm humid conditions
-            total_forecast_rain = sum(daily_rain)
+    # Dengue prediction using rainfall and warm humid conditions
+    total_forecast_rain = sum(daily_rain)
 
-            if max_forecast_temp >= 25 and humidity >= 70:
-                predictive_dengue_score += 1
+    if max_forecast_temp >= 25 and humidity >= 70:
+        predictive_dengue_score += 1
 
-            if total_forecast_rain > 0:
-                predictive_dengue_score += 1
+    if total_forecast_rain > 0:
+        predictive_dengue_score += 1
 
-            if total_forecast_rain >= 10:
-                predictive_dengue_score += 1
+    if total_forecast_rain >= 10:
+        predictive_dengue_score += 1
 
-            # Vulnerable group adjustment
-            if age_group == "under5":
-                predictive_heat_score += 1
-                predictive_respiratory_score += 1
-                predictive_dengue_score += 1
+    # Vulnerable group adjustment
+    if age_group == "under5":
+        predictive_heat_score += 1
+        predictive_respiratory_score += 1
+        predictive_dengue_score += 1
 
-            predictive_heat_risk = classify_risk(predictive_heat_score)
-            predictive_respiratory_risk = classify_risk(predictive_respiratory_score)
-            predictive_dengue_risk = classify_risk(predictive_dengue_score)
+    predictive_heat_risk = classify_risk(predictive_heat_score)
+    predictive_respiratory_risk = classify_risk(predictive_respiratory_score)
+    predictive_dengue_risk = classify_risk(predictive_dengue_score)
 
     # 🚨 Priority alert
     if "high" in risks:
