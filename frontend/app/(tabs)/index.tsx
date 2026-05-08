@@ -8,80 +8,74 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const [prevRisk, setPrevRisk] = useState<string | null>(null);
 
-const checkRisk = async () => {
-  try {
-    setLoading(true);
+  const checkRisk = async () => {
+    try {
+      setLoading(true);
 
-    const { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
 
-    if (status !== 'granted') {
-      alert('Location permission is needed to check local environmental risk.');
-      return;
+      if (status !== 'granted') {
+        alert('Location permission is needed to check local environmental risk.');
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const lat = location.coords.latitude;
+      const lon = location.coords.longitude;
+
+      const response = await fetch(
+        `http://10.27.185.152:8000/environment-risk?lat=${lat}&lon=${lon}&age_group=under5`
+      );
+
+      const data = await response.json();
+
+      setResult(data);
+
+      if (data.priority_alert === 'high' && prevRisk !== 'high') {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: '🚨 High Risk Alert',
+            body: data.action,
+            sound: true,
+            priority: Notifications.AndroidNotificationPriority.HIGH,
+          },
+          trigger: null,
+        });
+      }
+
+      if (prevRisk === 'high' && data.priority_alert !== 'high') {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: '✅ Risk Improved',
+            body: 'Risk levels have improved. Situation is safer now.',
+            sound: true,
+          },
+          trigger: null,
+        });
+      }
+
+      setPrevRisk(data.priority_alert);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    const location = await Location.getCurrentPositionAsync({
-  accuracy: Location.Accuracy.Balanced,
-});
+  useEffect(() => {
+    Notifications.requestPermissionsAsync();
 
-const lat = location.coords.latitude;
-const lon = location.coords.longitude;
-
-const response = await fetch(
-  `http://10.27.185.152:8000/environment-risk?lat=${lat}&lon=${lon}&age_group=under5`
-);
-
-const data = await response.json();
-
-setResult(data);
-
-// 🚨 Alert when risk becomes HIGH
-if (data.priority_alert === "high" && prevRisk !== "high") {
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: '🚨 High Risk Alert',
-      body: data.action,
-      sound: true,
-      priority: Notifications.AndroidNotificationPriority.HIGH,
-    },
-    trigger: null,
-  });
-}
-
-// ✅ Alert when risk improves from HIGH
-if (prevRisk === "high" && data.priority_alert !== "high") {
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: '✅ Risk Improved',
-      body: 'Risk levels have improved. Situation is safer now.',
-      sound: true,
-    },
-    trigger: null,
-  });
-}
-
-// 🔁 Always update previous risk
-setPrevRisk(data.priority_alert);
-
-  } catch (error) {
-    console.error(error);
-  } finally {
-    setLoading(false);
-  }
-};
-useEffect(() => {
-  // Ask notification permission ONLY once
-  Notifications.requestPermissionsAsync();
-
-  // Auto-check immediately when app opens
-  checkRisk();
-
-  // Re-check every 5 minutes
-  const interval = setInterval(() => {
     checkRisk();
-  }, 300000);
 
-  return () => clearInterval(interval);
-}, []);
+    const interval = setInterval(() => {
+      checkRisk();
+    }, 300000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const riskColour = (risk: string) => {
     if (risk === 'high') return '#FEE2E2';
@@ -148,6 +142,17 @@ useEffect(() => {
             <Text style={styles.cardTitle}>Recommended Action</Text>
             <Text style={styles.actionText}>{result.action}</Text>
           </View>
+
+          <Text style={styles.sectionTitle}>3-Day Forecast</Text>
+
+          {result.forecast.map((day: any) => (
+            <View key={day.day} style={styles.forecastCard}>
+              <Text style={styles.forecastDay}>Day {day.day}</Text>
+              <Text>🌡 Max Temp: {day.max_temperature}°C</Text>
+              <Text>🌧 Rainfall: {day.rainfall} mm</Text>
+              <Text>🔮 Predicted Risk: {day.predicted_risk.toUpperCase()}</Text>
+            </View>
+          ))}
         </View>
       )}
     </ScrollView>
@@ -271,5 +276,22 @@ const styles = StyleSheet.create({
   actionText: {
     color: '#1E3A8A',
     lineHeight: 22,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  forecastCard: {
+    backgroundColor: '#F3F7FF',
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  forecastDay: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 6,
   },
 });
