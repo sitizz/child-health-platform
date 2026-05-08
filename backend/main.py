@@ -236,63 +236,141 @@ def environment_risk(
     else:
         action = "✅ LOW RISK: Safe to continue normal activities with basic precautions."
     
-    # Structured recommended actions
-    if priority_alert == "high":
-        immediate_action = (
-            "Reduce outdoor exposure immediately and begin active monitoring."
-        )
-    elif priority_alert == "moderate":
-        immediate_action = (
-            "Limit prolonged outdoor exposure and monitor symptoms closely."
-        )
-    else:
-        immediate_action = (
-            "Continue normal activities with routine environmental precautions."
-        )
-
+    # Scenario-based recommendation engine
+    immediate_action = []
     caregiver_action = []
+    school_action = []
+    community_action = []
+    escalation_triggers = []
 
-    if heat_risk != "low":
+    # Heat + dehydration scenario
+    if heat_risk in ["moderate", "high"] and dehydration:
+        immediate_action.append(
+            "Move the child to a shaded or cooler area and begin oral hydration immediately."
+        )
         caregiver_action.append(
-            "Encourage hydration, cooling, shade, and reduced heat exposure."
+            "Monitor for reduced urination, unusual tiredness, dizziness, or worsening weakness over the next few hours."
+        )
+        school_action.append(
+            "Avoid outdoor activity and allow supervised rest in a cooler indoor area."
+        )
+        escalation_triggers.append(
+            "Seek urgent care if dehydration symptoms worsen, the child becomes unusually drowsy, confused, or unable to drink."
         )
 
-    if respiratory_risk != "low":
+    # Heat risk without dehydration
+    elif heat_risk in ["moderate", "high"]:
+        immediate_action.append(
+            "Reduce outdoor heat exposure and encourage regular fluid intake."
+        )
         caregiver_action.append(
-            "Reduce exposure to polluted air and monitor breathing symptoms."
+            "Keep the child in shade or a cooler indoor space during peak heat periods."
+        )
+        school_action.append(
+            "Reduce strenuous outdoor activity and increase hydration breaks."
         )
 
-    if dengue_risk != "low":
+    # Respiratory + asthma/cough scenario
+    if respiratory_risk in ["moderate", "high"] and (asthma or cough):
+        immediate_action.append(
+            "Reduce outdoor exposure and avoid strenuous activity until air quality improves."
+        )
         caregiver_action.append(
-            "Use mosquito protection and remove standing water nearby."
+            "Monitor breathing, coughing, wheezing, chest tightness, or unusual fatigue."
+        )
+        school_action.append(
+            "Keep the child indoors where possible and reduce exposure to outdoor air pollution."
+        )
+        escalation_triggers.append(
+            "Seek urgent care if breathing difficulty, persistent wheezing, bluish lips, or severe chest tightness occurs."
         )
 
-    if flood_risk != "low":
+    # Respiratory risk without symptoms
+    elif respiratory_risk in ["moderate", "high"]:
         caregiver_action.append(
-            "Avoid contaminated floodwater and monitor for water-borne illness symptoms."
+            "Reduce prolonged outdoor exposure and monitor for new respiratory symptoms."
         )
+        school_action.append(
+            "Limit outdoor group activities during poor air quality periods."
+        )
+
+    # Dengue concern scenario
+    if dengue_risk in ["moderate", "high"] and fever and mosquito_exposure:
+        immediate_action.append(
+            "Increase mosquito protection immediately and monitor fever progression closely."
+        )
+        caregiver_action.append(
+            "Watch for dengue warning signs such as persistent fever, vomiting, abdominal pain, bleeding, unusual tiredness, or worsening weakness."
+        )
+        community_action.append(
+            "Check nearby standing water and reduce mosquito breeding sites around the home, school, or community area."
+        )
+        escalation_triggers.append(
+            "Seek clinical advice urgently if fever persists, warning signs appear, or the child becomes increasingly weak."
+        )
+
+    # Dengue environmental risk only
+    elif dengue_risk in ["moderate", "high"]:
+        caregiver_action.append(
+            "Use mosquito protection and reduce exposure to mosquito breeding areas."
+        )
+        community_action.append(
+            "Remove standing water and monitor local mosquito exposure risk."
+        )
+
+    # Flood exposure scenario
+    if flood_risk in ["moderate", "high"] or flood_exposure:
+        caregiver_action.append(
+            "Avoid contact with contaminated floodwater and ensure drinking water is safe."
+        )
+        community_action.append(
+            "Monitor for water contamination, blocked drainage, and local flood-related health risks."
+        )
+        escalation_triggers.append(
+            "Seek care if diarrhoea, persistent fever, skin infection, or dehydration symptoms develop after flood exposure."
+        )
+
+    # Default fallback
+    if len(immediate_action) == 0:
+        if priority_alert == "high":
+            immediate_action.append(
+                "Reduce exposure immediately and monitor the child closely."
+            )
+        elif priority_alert == "moderate":
+            immediate_action.append(
+                "Limit exposure and continue active symptom monitoring."
+            )
+        else:
+            immediate_action.append(
+                "Continue normal activities with routine environmental precautions."
+            )
 
     if len(caregiver_action) == 0:
         caregiver_action.append(
-            "Maintain normal environmental health precautions."
+            "Continue routine monitoring and respond early if symptoms develop."
+        )
+
+    if len(school_action) == 0:
+        school_action.append(
+            "Maintain routine supervision and ensure water access during school hours."
+        )
+
+    if len(community_action) == 0:
+        community_action.append(
+            "Continue monitoring local environmental conditions and share updates when risk changes."
+        )
+
+    if len(escalation_triggers) == 0:
+        escalation_triggers.append(
+            "Seek medical advice if symptoms worsen, persist, or the child appears unusually weak or unwell."
         )
 
     recommended_action = {
         "immediate": immediate_action,
-
         "caregiver": caregiver_action,
-
-        "school": (
-            "Review outdoor activities, hydration access, and child monitoring procedures."
-        ),
-
-        "community": (
-            "Share local environmental risk updates with caregivers and community responders."
-        ),
-
-        "when_to_escalate": (
-            "Seek urgent medical attention if severe breathing difficulty, persistent fever, confusion, seizures, dehydration, or worsening symptoms occur."
-        )
+        "school": school_action,
+        "community": community_action,
+        "when_to_escalate": escalation_triggers,
     }
 
         # 📈 Trend direction logic
