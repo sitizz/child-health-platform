@@ -133,6 +133,54 @@ def environment_risk(
     else:
         action = "✅ LOW RISK: Safe to continue normal activities with basic precautions."
 
+        # 📈 Trend direction logic
+    high_days = sum(
+        1 for day in forecast_risks
+        if day["predicted_risk"] == "high"
+    )
+
+    moderate_days = sum(
+        1 for day in forecast_risks
+        if day["predicted_risk"] == "moderate"
+    )
+
+    # Trend message
+    if high_days >= 2:
+        trend_direction = "increasing"
+        trend_message = "Environmental risk is increasing over the next 72 hours."
+    elif moderate_days >= 2:
+        trend_direction = "stable"
+        trend_message = "Moderate environmental risk is expected to persist."
+    else:
+        trend_direction = "decreasing"
+        trend_message = "Environmental risk is expected to remain low or improve."
+
+    # Escalation logic
+    if high_days >= 2:
+        escalation_level = "urgent"
+        escalation_reason = "High-risk conditions are expected for multiple days."
+    elif moderate_days >= 2:
+        escalation_level = "watch"
+        escalation_reason = "Moderate risk may worsen if conditions continue."
+    else:
+        escalation_level = "normal"
+        escalation_reason = "No major escalation risk detected."
+
+    # Age-specific guidance
+    guidance_map = {
+        "under5": "Young children are highly vulnerable to heat stress and poor air quality.",
+        "infant": "Infants are especially sensitive to heat and respiratory changes.",
+        "asthma": "Children with asthma should reduce outdoor exposure during poor air quality.",
+        "pregnant": "Pregnant individuals should remain hydrated and avoid prolonged heat exposure.",
+        "elderly": "Older adults are more vulnerable to respiratory complications.",
+        "general": "Maintain hydration and monitor environmental conditions regularly."
+    }
+
+    guidance_message = guidance_map.get(
+        age_group,
+        guidance_map["general"]
+    )
+
     # 📦 Final response
     return {
         "location": {"lat": lat, "lon": lon},
@@ -152,4 +200,16 @@ def environment_risk(
         "priority_alert": priority_alert,
         "forecast": forecast_risks,
         "action": action,
+        "trend": {
+            "direction": trend_direction,
+            "message": trend_message,
+        },
+        "escalation": {
+            "level": escalation_level,
+            "reason": escalation_reason,
+        },
+        "guidance": {
+            "group": age_group,
+            "message": guidance_message,
+        }
     }
