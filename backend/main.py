@@ -243,6 +243,49 @@ def environment_risk(
         guidance_map["general"]
     )
 
+    # Stakeholder guidance
+    caregiver_guidance = []
+    school_guidance = []
+    community_guidance = []
+
+    # Heat-related guidance
+    if heat_risk in ["moderate", "high"]:
+        caregiver_guidance.append(
+            "Increase hydration and reduce prolonged outdoor heat exposure."
+        )
+
+        school_guidance.append(
+            "Limit prolonged outdoor activities during peak afternoon temperatures."
+        )
+
+    # Respiratory guidance
+    if respiratory_risk in ["moderate", "high"]:
+        caregiver_guidance.append(
+            "Monitor coughing, wheezing, or breathing difficulty in vulnerable children."
+        )
+
+        school_guidance.append(
+            "Reduce outdoor group activities during periods of poor air quality."
+        )
+
+    # Dengue guidance
+    if dengue_risk in ["moderate", "high"]:
+        community_guidance.append(
+            "Monitor standing water accumulation and mosquito exposure risk."
+        )
+
+    # Flood guidance
+    if flood_risk in ["moderate", "high"]:
+        community_guidance.append(
+            "Prepare for possible local flooding and water contamination exposure."
+        )
+
+    stakeholder_guidance = {
+        "caregiver": caregiver_guidance,
+        "school": school_guidance,
+        "community": community_guidance,
+    }
+
     # 📦 Final response
     return {
         "location": {"lat": lat, "lon": lon},
@@ -286,4 +329,5 @@ def environment_risk(
             "group": age_group,
             "message": guidance_message,
         }
+        "stakeholder_guidance": stakeholder_guidance,
     }

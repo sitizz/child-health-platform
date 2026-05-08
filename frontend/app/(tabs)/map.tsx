@@ -39,10 +39,10 @@ export default function RegionalRiskMapScreen() {
 
       const samplePoints = [
         { label: 'Current area', lat, lon },
-        { label: 'North zone', lat: lat + 0.03, lon },
-        { label: 'South zone', lat: lat - 0.03, lon },
-        { label: 'East zone', lat, lon: lon + 0.03 },
-        { label: 'West zone', lat, lon: lon - 0.03 },
+        { label: 'North zone', lat: lat + 0.05, lon },
+        { label: 'South zone', lat: lat - 0.05, lon },
+        { label: 'East zone', lat, lon: lon + 0.05 },
+        { label: 'West zone', lat, lon: lon - 0.05 },
       ];
 
       const results = await Promise.all(
@@ -58,11 +58,19 @@ export default function RegionalRiskMapScreen() {
           }
 
           const data = JSON.parse(text);
+          const topThreat = getTopThreat(data.risks);
+          const reasons = data.risk_reasons || {};
 
           return {
             ...point,
             priority_alert: data.priority_alert,
             top_threat: getTopThreat(data.risks),
+            reason:
+                reasons.heat_stress?.[0] ||
+                reasons.respiratory?.[0] ||
+                reasons.dengue?.[0] ||
+                reasons.flood?.[0] ||
+                'No major risk driver detected',
             action: data.action,
           };
         })
@@ -116,7 +124,7 @@ export default function RegionalRiskMapScreen() {
             }}
             pinColor={markerColour(point.priority_alert)}
             title={`${point.label}: ${point.priority_alert.toUpperCase()}`}
-            description={`Top threat: ${point.top_threat}`}
+            description={`Top threat: ${point.top_threat}. Driver: ${point.reason}`}
           />
         ))}
       </MapView>
