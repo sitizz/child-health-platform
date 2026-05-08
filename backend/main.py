@@ -22,6 +22,12 @@ def environment_risk(
     lat: float,
     lon: float,
     age_group: str = "under5"
+    asthma: bool = False,
+    fever: bool = False,
+    cough: bool = False,
+    dehydration: bool = False,
+    mosquito_exposure: bool = False,
+    flood_exposure: bool = False
 ):
     # 🌍 Fetch weather data
     weather_url = (
@@ -109,6 +115,37 @@ def environment_risk(
         heat_score += 1
         respiratory_score += 1
         dengue_score += 1
+    
+    # Symptom and vulnerability adjustments
+    if asthma:
+        respiratory_score += 1
+        respiratory_reasons.append(
+            "Asthma increases respiratory vulnerability"
+        )
+
+    if cough:
+        respiratory_score += 1
+        respiratory_reasons.append(
+            "Existing respiratory symptoms detected"
+        )
+
+    if dehydration:
+        heat_score += 1
+        heat_reasons.append(
+            "Dehydration symptoms increase heat vulnerability"
+        )
+
+    if fever and mosquito_exposure:
+        dengue_score += 1
+        dengue_reasons.append(
+            "Fever combined with mosquito exposure increases dengue concern"
+        )
+
+    if flood_exposure:
+        flood_score += 1
+        flood_reasons.append(
+            "Recent flood exposure increases environmental health risk"
+        )
 
     # 🧾 Classify risks
     heat_risk = classify_risk(heat_score)
