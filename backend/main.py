@@ -21,7 +21,7 @@ def classify_risk(score):
 def environment_risk(
     lat: float,
     lon: float,
-    age_group: str = "under5"
+    age_group: str = "under5",
     asthma: bool = False,
     fever: bool = False,
     cough: bool = False,
