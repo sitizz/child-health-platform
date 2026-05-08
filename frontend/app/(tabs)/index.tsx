@@ -143,16 +143,32 @@ export default function HomeScreen() {
             <Text style={styles.actionText}>{result.action}</Text>
           </View>
 
-          <Text style={styles.sectionTitle}>3-Day Forecast</Text>
+          <Text style={styles.sectionTitle}>Predictive Risk Forecast</Text>
 
-          {result.forecast.map((day: any) => (
-            <View key={day.day} style={styles.forecastCard}>
+        {result.forecast.map((day: any) => (
+          <View key={day.day} style={styles.forecastCard}>
+            <View style={styles.forecastHeader}>
               <Text style={styles.forecastDay}>Day {day.day}</Text>
-              <Text>🌡 Max Temp: {day.max_temperature}°C</Text>
-              <Text>🌧 Rainfall: {day.rainfall} mm</Text>
-              <Text>🔮 Predicted Risk: {day.predicted_risk.toUpperCase()}</Text>
+
+              <Text
+                style={[
+                  styles.forecastBadge,
+                  { color: riskTextColour(day.predicted_risk) },
+                ]}
+              >
+                {day.predicted_risk.toUpperCase()}
+              </Text>
             </View>
-          ))}
+
+            <View style={styles.forecastGrid}>
+              <Text style={styles.metricLabel}>Max temperature</Text>
+              <Text style={styles.metricValue}>{day.max_temperature}°C</Text>
+
+              <Text style={styles.metricLabel}>Rainfall</Text>
+              <Text style={styles.metricValue}>{day.rainfall} mm</Text>
+            </View>
+          </View>
+        ))}
         </View>
       )}
     </ScrollView>
@@ -294,4 +310,33 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 6,
   },
+  forecastHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 12,
+},
+
+forecastBadge: {
+  fontWeight: '900',
+  fontSize: 13,
+  letterSpacing: 0.5,
+},
+
+forecastGrid: {
+  gap: 6,
+},
+
+metricLabel: {
+  color: '#64748B',
+  fontSize: 13,
+  fontWeight: '600',
+},
+
+metricValue: {
+  color: '#0F172A',
+  fontSize: 18,
+  fontWeight: '800',
+  marginBottom: 6,
+},
 });
