@@ -328,6 +328,6 @@ def environment_risk(
         "guidance": {
             "group": age_group,
             "message": guidance_message,
-        }
+        },
         "stakeholder_guidance": stakeholder_guidance,
     }
