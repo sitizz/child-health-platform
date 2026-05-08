@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Text, View, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { Text, View, Pressable, StyleSheet, ScrollView, Switch } from 'react-native';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 
@@ -7,6 +7,12 @@ export default function HomeScreen() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [prevRisk, setPrevRisk] = useState<string | null>(null);
+  const [asthma, setAsthma] = useState(false);
+  const [fever, setFever] = useState(false);
+  const [cough, setCough] = useState(false);
+  const [dehydration, setDehydration] = useState(false);
+  const [mosquitoExposure, setMosquitoExposure] = useState(false);
+  const [floodExposure, setFloodExposure] = useState(false);
 
   const checkRisk = async () => {
     try {
@@ -27,8 +33,8 @@ export default function HomeScreen() {
       const lon = location.coords.longitude;
 
       const response = await fetch(
-        `https://child-health-platform.onrender.com/environment-risk?lat=${lat}&lon=${lon}&age_group=under5`
-      );
+        `https://child-health-platform.onrender.com/environment-risk?lat=${lat}&lon=${lon}&age_group=under5&asthma=${asthma}&fever=${fever}&cough=${cough}&dehydration=${dehydration}&mosquito_exposure=${mosquitoExposure}&flood_exposure=${floodExposure}`
+    );
 
       const data = await response.json();
 
@@ -98,6 +104,45 @@ export default function HomeScreen() {
       <Text style={styles.subtitle}>
         Real-time early warning for child heat stress, respiratory risk and dengue risk.
       </Text>
+      <View style={styles.profileCard}>
+        <Text style={styles.cardTitle}>Child Vulnerability Profile</Text>
+
+        <ProfileRow
+          label="Asthma history"
+          value={asthma}
+          onValueChange={setAsthma}
+        />
+
+        <ProfileRow
+          label="Fever symptoms"
+          value={fever}
+          onValueChange={setFever}
+        />
+
+        <ProfileRow
+          label="Cough or wheezing"
+          value={cough}
+          onValueChange={setCough}
+        />
+
+        <ProfileRow
+          label="Dehydration symptoms"
+          value={dehydration}
+          onValueChange={setDehydration}
+        />
+
+        <ProfileRow
+          label="Mosquito exposure"
+          value={mosquitoExposure}
+          onValueChange={setMosquitoExposure}
+        />
+
+        <ProfileRow
+          label="Recent flood exposure"
+          value={floodExposure}
+          onValueChange={setFloodExposure}
+        />
+      </View>
 
       <Pressable style={styles.button} onPress={checkRisk}>
         <Text style={styles.buttonText}>
@@ -142,10 +187,19 @@ export default function HomeScreen() {
             <Text style={styles.cardTitle}>Recommended Action</Text>
             <Text style={styles.actionText}>{result.action}</Text>
           </View>
-          
+
         </View>
       )}
     </ScrollView>
+  );
+}
+
+function ProfileRow({ label, value, onValueChange }: any) {
+  return (
+    <View style={styles.profileRow}>
+      <Text style={styles.profileLabel}>{label}</Text>
+      <Switch value={value} onValueChange={onValueChange} />
+    </View>
   );
 }
 
@@ -266,6 +320,23 @@ const styles = StyleSheet.create({
   actionText: {
     color: '#1E3A8A',
     lineHeight: 22,
+  },
+  profileCard: {
+  backgroundColor: 'white',
+  padding: 18,
+  borderRadius: 22,
+  marginBottom: 20,
+  },
+  profileRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  profileLabel: {
+    fontSize: 15,
+    color: '#0F172A',
+    fontWeight: '600',
   },
   sectionTitle: {
     fontSize: 18,

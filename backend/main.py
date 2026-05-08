@@ -116,35 +116,38 @@ def environment_risk(
         respiratory_score += 1
         dengue_score += 1
     
-    # Symptom and vulnerability adjustments
+    # Child vulnerability indicators
+    vulnerability_score = 0
+    vulnerability_reasons = []
+
     if asthma:
-        respiratory_score += 1
-        respiratory_reasons.append(
+        vulnerability_score += 1
+        vulnerability_reasons.append(
             "Asthma increases respiratory vulnerability"
         )
 
     if cough:
-        respiratory_score += 1
-        respiratory_reasons.append(
+        vulnerability_score += 1
+        vulnerability_reasons.append(
             "Existing respiratory symptoms detected"
         )
 
     if dehydration:
-        heat_score += 1
-        heat_reasons.append(
+        vulnerability_score += 1
+        vulnerability_reasons.append(
             "Dehydration symptoms increase heat vulnerability"
         )
 
     if fever and mosquito_exposure:
-        dengue_score += 1
-        dengue_reasons.append(
+        vulnerability_score += 1
+        vulnerability_reasons.append(
             "Fever combined with mosquito exposure increases dengue concern"
         )
 
     if flood_exposure:
-        flood_score += 1
-        flood_reasons.append(
-            "Recent flood exposure increases environmental health risk"
+        vulnerability_score += 1
+        vulnerability_reasons.append(
+            "Recent flood exposure increases environmental vulnerability"
         )
 
     # 🧾 Classify risks
@@ -152,6 +155,7 @@ def environment_risk(
     respiratory_risk = classify_risk(respiratory_score)
     dengue_risk = classify_risk(dengue_score)
     flood_risk = classify_risk(flood_score)
+    vulnerability_level = classify_risk(vulnerability_score)
 
     risks = [heat_risk, respiratory_risk, dengue_risk, flood_risk]
 
@@ -345,6 +349,10 @@ def environment_risk(
             "respiratory": respiratory_reasons,
             "dengue": dengue_reasons,
             "flood": flood_reasons,
+        },
+        "child_vulnerability": {
+            "level": vulnerability_level,
+            "reasons": vulnerability_reasons,
         },
         "predictive_domains": {
             "heat_stress": predictive_heat_risk,
