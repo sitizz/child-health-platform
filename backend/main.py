@@ -3,6 +3,7 @@ import requests
 import concurrent.futures
 
 app = FastAPI()
+
 @app.get("/")
 def home():
     return {"status": "Child Health Platform backend is running"}
