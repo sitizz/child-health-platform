@@ -34,6 +34,14 @@ export default function HomeScreen() {
       );
 
       const data = await response.json();
+      console.log('Risk API response:', data);
+
+      if (!data.priority_alert || !data.risks) {
+        console.error('Invalid risk API response:', data);
+        alert('Risk check failed. Please complete child profile.');
+        return;
+      }
+
 
       setResult(data);
       await AsyncStorage.setItem('lastRiskResult', JSON.stringify(data));
@@ -84,7 +92,7 @@ export default function HomeScreen() {
   const message = `
 Child Health Alert
 
-Risk Priority: ${result.priority_alert.toUpperCase()}
+Risk Priority: ${result.priority_alert ? result.priority_alert.toUpperCase() : 'UNKNOWN'}
 
 Recommended Action:
 ${result.action}
@@ -169,7 +177,24 @@ useEffect(() => {
         Real-time early warning for child heat stress, respiratory risk and dengue risk.
       </Text>
 
-      <Pressable style={styles.button} onPress={checkRisk}>
+      <Pressable
+        style={styles.editProfileButton}
+        onPress={() => router.push('/edit-profile')}
+      >
+        <Text style={styles.editProfileText}>Edit Profile</Text>
+      </Pressable>
+
+      <Pressable
+        style={styles.button}
+        onPress={() => {
+          if (!selectedChild) {
+            alert('Please complete child profile first.');
+            return;
+          }
+
+          checkRisk(selectedChild);
+        }}
+      >
         <Text style={styles.buttonText}>
           {loading ? 'Checking...' : 'Check Current Risk'}
         </Text>
@@ -190,7 +215,7 @@ useEffect(() => {
                 { color: riskTextColour(result.priority_alert) },
               ]}
             >
-              {result.priority_alert.toUpperCase()}
+              {result.priority_alert ? result.priority_alert.toUpperCase() : 'UNKNOWN'}
             </Text>
           </View>
 
@@ -466,5 +491,14 @@ const styles = StyleSheet.create({
   color: '#1E3A8A',
   marginTop: 10,
   marginBottom: 4,
+  },
+  editProfileButton: {
+  alignSelf: 'center',
+  marginBottom: 18,
+  },
+  editProfileText: {
+  color: '#2563EB',
+  fontWeight: '700',
+  fontSize: 15,
   },
 });
