@@ -406,20 +406,56 @@ def environment_risk(
         escalation_level = "normal"
         escalation_reason = "No major escalation risk detected."
 
-    # Age-specific guidance
-    guidance_map = {
-        "under5": "Young children are highly vulnerable to heat stress and poor air quality.",
-        "infant": "Infants are especially sensitive to heat and respiratory changes.",
-        "asthma": "Children with asthma should reduce outdoor exposure during poor air quality.",
-        "pregnant": "Pregnant individuals should remain hydrated and avoid prolonged heat exposure.",
-        "elderly": "Older adults are more vulnerable to respiratory complications.",
-        "general": "Maintain hydration and monitor environmental conditions regularly."
-    }
+    # Personalised guidance
 
-    guidance_message = guidance_map.get(
-        age_group,
-        guidance_map["general"]
-    )
+    guidance_parts = []
+
+    if age_group == "under5":
+        guidance_parts.append(
+            "Children under 5 can deteriorate more quickly during heat, dehydration, respiratory stress, and infectious disease exposure."
+        )
+
+    if heat_risk in ["moderate", "high"]:
+        guidance_parts.append(
+            "Heat exposure may increase dehydration risk, fatigue, and heat-related illness in vulnerable children."
+        )
+
+    if respiratory_risk in ["moderate", "high"]:
+        guidance_parts.append(
+            "Poor air quality may worsen coughing, wheezing, breathing discomfort, or asthma-related symptoms."
+        )
+
+    if dengue_risk in ["moderate", "high"]:
+        guidance_parts.append(
+            "Warm and humid conditions may increase mosquito activity and dengue exposure risk."
+        )
+
+    if asthma:
+        guidance_parts.append(
+            "Children with asthma or respiratory vulnerability may require closer breathing monitoring during poor air quality conditions."
+        )
+
+    if dehydration:
+        guidance_parts.append(
+            "Existing dehydration symptoms may worsen more rapidly during sustained heat exposure."
+        )
+
+    if fever and mosquito_exposure:
+        guidance_parts.append(
+            "Fever together with mosquito exposure should be monitored carefully for worsening infectious symptoms."
+        )
+
+    if flood_exposure:
+        guidance_parts.append(
+            "Flood exposure may increase risk of contaminated water exposure, skin infection, and water-borne illness."
+        )
+
+    if len(guidance_parts) == 0:
+        guidance_parts.append(
+            "Continue monitoring environmental conditions and maintain routine precautions."
+        )
+
+    guidance_message = " ".join(guidance_parts)
 
     # Stakeholder guidance
     caregiver_guidance = []

@@ -92,6 +92,30 @@ const response = await fetch(
         <Text style={styles.bodyText}>{data.trend.message}</Text>
       </View>
 
+      <View style={styles.workflowCard}>
+        <Text style={styles.workflowTitle}>Caregiver Actions</Text>
+
+        {data.recommended_action?.caregiver?.map((item: string, index: number) => (
+          <Text key={index} style={styles.workflowText}>• {item}</Text>
+        ))}
+      </View>
+
+      <View style={styles.workflowCard}>
+        <Text style={styles.workflowTitle}>School Advisory</Text>
+
+        {data.recommended_action?.school?.map((item: string, index: number) => (
+          <Text key={index} style={styles.workflowText}>• {item}</Text>
+        ))}
+      </View>
+
+      <View style={styles.workflowCard}>
+        <Text style={styles.workflowTitle}>Community Guidance</Text>
+
+        {data.recommended_action?.community?.map((item: string, index: number) => (
+          <Text key={index} style={styles.workflowText}>• {item}</Text>
+        ))}
+      </View>
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Forecast</Text>
 
@@ -236,4 +260,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111827',
   },
+  workflowCard: {
+  backgroundColor: 'white',
+  padding: 18,
+  borderRadius: 22,
+  marginTop: 14,
+ },
+  workflowTitle: {
+  fontSize: 16,
+  fontWeight: '900',
+  color: '#0F172A',
+  marginBottom: 10,
+ },
+ workflowText: {
+  color: '#475569',
+  lineHeight: 22,
+  marginBottom: 6,
+ },
 });
