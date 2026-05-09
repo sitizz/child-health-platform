@@ -138,7 +138,14 @@ const response = await fetch(
 
       <View style={styles.panel}>
         <Text style={styles.panelTitle}>Age-Specific Guidance</Text>
-        <Text style={styles.bodyText}>{data.guidance.message}</Text>
+        <Text style={styles.bodyText}>{data.guidance.summary}</Text>
+
+        {data.guidance.key_points?.map((point: string, index: number) => (
+          <View key={index} style={styles.guidancePoint}>
+            <Text style={styles.bullet}>•</Text>
+            <Text style={styles.guidanceText}>{point}</Text>
+          </View>
+        ))}
       </View>
     </ScrollView>
   );
@@ -276,5 +283,22 @@ const styles = StyleSheet.create({
   color: '#475569',
   lineHeight: 22,
   marginBottom: 6,
+ },
+ guidancePoint: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  marginTop: 10,
+ },
+  bullet: {
+  color: '#E5E7EB',
+  fontSize: 18,
+  marginRight: 8,
+  lineHeight: 24,
+ },
+  guidanceText: {
+  color: '#E5E7EB',
+  fontSize: 15,
+  lineHeight: 22,
+  flex: 1,
  },
 });
