@@ -406,7 +406,7 @@ def environment_risk(
         escalation_level = "normal"
         escalation_reason = "No major escalation risk detected."
 
-    # Personalised guidance
+    # Personalised scenario-based age guidance
 
     guidance_parts = []
 
@@ -455,7 +455,8 @@ def environment_risk(
             "Continue monitoring environmental conditions and maintain routine precautions."
         )
 
-    guidance_message = " ".join(guidance_parts)
+    guidance_summary = guidance_parts[0]
+    guidance_points = guidance_parts[1:]
 
     # Stakeholder guidance
     caregiver_guidance = []
@@ -546,7 +547,8 @@ def environment_risk(
         },
         "guidance": {
             "group": age_group,
-            "message": guidance_message,
+            "summary": guidance_summary,
+            "key_points": guidance_points,
         },
         "stakeholder_guidance": stakeholder_guidance,
     }
