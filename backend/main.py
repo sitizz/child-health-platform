@@ -35,7 +35,7 @@ def environment_risk(
     f"?latitude={lat}&longitude={lon}"
     f"&current=temperature_2m,relative_humidity_2m,precipitation"
     f"&daily=temperature_2m_max,precipitation_sum"
-    f"&forecast_days=3"
+    f"&forecast_days=7"
 )
 
     air_url = (
@@ -164,7 +164,7 @@ def environment_risk(
 
     forecast_risks = []
 
-    for day in range(3):
+    for day in range(7):
         forecast_score = 0
 
         if daily_temp[day] >= 35:

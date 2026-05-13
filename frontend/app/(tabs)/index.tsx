@@ -1,102 +1,125 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Text, View, Pressable, StyleSheet, ScrollView, Share } from 'react-native';
+import { Text, View, Pressable, StyleSheet, ScrollView, Share, SafeAreaView } from 'react-native';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
-  const [result, setResult] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [prevRisk, setPrevRisk] = useState<string | null>(null);
-  const [selectedChild, setSelectedChild] = useState<any>(null);
-
-  const checkRisk = async (profile = selectedChild) => {
-    try {
-      setLoading(true);
-
-      const { status } = await Location.requestForegroundPermissionsAsync();
-
-      if (status !== 'granted') {
-        alert('Location permission is needed to check local environmental risk.');
-        return;
-      }
-
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const lat = location.coords.latitude;
-      const lon = location.coords.longitude;
-
-      const response = await fetch(
-       `https://child-health-platform.onrender.com/environment-risk?lat=${lat}&lon=${lon}&age_group=${profile?.age_group}&asthma=${profile?.asthma}&fever=${profile?.fever}&cough=${profile?.cough}&dehydration=${profile?.dehydration}&mosquito_exposure=${profile?.mosquito_exposure}&flood_exposure=${profile?.flood_exposure}`
-      );
-
-      const data = await response.json();
-      console.log('Risk API response:', data);
-
-      if (!data.priority_alert || !data.risks) {
-        console.error('Invalid risk API response:', data);
-        alert('Risk check failed. Please complete child profile.');
-        return;
-      }
+ const [result, setResult] = useState<any>(null);
+ const [loading, setLoading] = useState(false);
+ const [prevRisk, setPrevRisk] = useState<string | null>(null);
+ const [selectedChild, setSelectedChild] = useState<any>(null);
+ const [caregiverProfile, setCaregiverProfile] = useState<any>(null);
 
 
-      setResult(data);
-      await AsyncStorage.setItem('lastRiskResult', JSON.stringify(data));
+ const checkRisk = async (profile = selectedChild) => {
+   try {
+     setLoading(true);
 
-      if (data.priority_alert === 'high' && prevRisk !== 'high') {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '🚨 High Risk Alert',
-            body: data.action,
-            sound: true,
-            priority: Notifications.AndroidNotificationPriority.HIGH,
-          },
-          trigger: null,
-        });
-      }
 
-      if (prevRisk === 'high' && data.priority_alert !== 'high') {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '✅ Risk Improved',
-            body: 'Risk levels have improved. Situation is safer now.',
-            sound: true,
-          },
-          trigger: null,
-        });
-      }
+     const { status } = await Location.requestForegroundPermissionsAsync();
 
-      setPrevRisk(data.priority_alert);
-    } catch (error) {
-      console.error(error);
 
-      const cached = await AsyncStorage.getItem('lastRiskResult');
-      if (cached) {
-        const cachedData = JSON.parse(cached);
+     if (status !== 'granted') {
+       alert('Location permission is needed to check local environmental risk.');
+       return;
+     }
 
-        setResult(cachedData);
 
-        alert('Offline mode: displaying last known environmental risk data.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+     const location = await Location.getCurrentPositionAsync({
+       accuracy: Location.Accuracy.Balanced,
+     });
 
-  const shareAlert = async () => {
-  if (!result) return;
 
-  const message = `
+     const lat = location.coords.latitude;
+     const lon = location.coords.longitude;
+
+
+     const response = await fetch(
+      `https://child-health-platform.onrender.com/environment-risk?lat=${lat}&lon=${lon}&age_group=${profile?.age_group}&asthma=${profile?.asthma}&fever=${profile?.fever}&cough=${profile?.cough}&dehydration=${profile?.dehydration}&mosquito_exposure=${profile?.mosquito_exposure}&flood_exposure=${profile?.flood_exposure}`
+     );
+
+
+     const data = await response.json();
+     console.log('Risk API response:', data);
+
+
+     if (!data.priority_alert || !data.risks) {
+       console.error('Invalid risk API response:', data);
+       alert('Risk check failed. Please complete child profile.');
+       return;
+     }
+
+
+
+
+     setResult(data);
+     await AsyncStorage.setItem('lastRiskResult', JSON.stringify(data));
+
+
+     if (data.priority_alert === 'high' && prevRisk !== 'high') {
+       await Notifications.scheduleNotificationAsync({
+         content: {
+           title: '🚨 High Risk Alert',
+           body: data.action,
+           sound: true,
+           priority: Notifications.AndroidNotificationPriority.HIGH,
+         },
+         trigger: null,
+       });
+     }
+
+
+     if (prevRisk === 'high' && data.priority_alert !== 'high') {
+       await Notifications.scheduleNotificationAsync({
+         content: {
+           title: '✅ Risk Improved',
+           body: 'Risk levels have improved. Situation is safer now.',
+           sound: true,
+         },
+         trigger: null,
+       });
+     }
+
+
+     setPrevRisk(data.priority_alert);
+   } catch (error) {
+     console.error(error);
+
+
+     const cached = await AsyncStorage.getItem('lastRiskResult');
+     if (cached) {
+       const cachedData = JSON.parse(cached);
+
+
+       setResult(cachedData);
+
+
+       alert('Offline mode: displaying last known environmental risk data.');
+     }
+   } finally {
+     setLoading(false);
+   }
+ };
+
+
+ const shareAlert = async () => {
+ if (!result) return;
+
+
+ const message = `
 Child Health Alert
+
 
 Risk Priority: ${result.priority_alert ? result.priority_alert.toUpperCase() : 'UNKNOWN'}
 
+
 Recommended Action:
 ${result.action}
+
 
 Environmental Conditions:
 Temperature: ${result.environment.temperature}°C
@@ -104,118 +127,202 @@ Humidity: ${result.environment.humidity}%
 Rainfall: ${result.environment.rainfall} mm
 PM2.5: ${result.environment.pm2_5}
 
+
 Child Vulnerability:
 ${result.child_vulnerability.level.toUpperCase()}
+
 
 Generated by Child Guard.
 `;
 
-  await Share.share({
-    message,
-  });
+
+ await Share.share({
+   message,
+ });
 };
 
+
 useFocusEffect(
-  useCallback(() => {
-    const refreshSelectedChild = async () => {
-      const savedProfile = await AsyncStorage.getItem('caregiverProfile');
+ useCallback(() => {
+   const refreshSelectedChild = async () => {
+     const savedProfile = await AsyncStorage.getItem('caregiverProfile');
 
-      if (!savedProfile) return;
 
-      const parsedProfile = JSON.parse(savedProfile);
+     if (!savedProfile) return;
 
-      const selected = parsedProfile.children.find(
-        (child: any) => child.id === parsedProfile.selectedChildId
-      );
 
-      setSelectedChild(selected);
-    };
+     const parsedProfile = JSON.parse(savedProfile);
 
-    refreshSelectedChild();
-  }, [])
+
+     const selected = parsedProfile.children.find(
+       (child: any) => child.id === parsedProfile.selectedChildId
+     );
+
+
+     setSelectedChild(selected);
+   };
+
+
+   refreshSelectedChild();
+ }, [])
 );
 
+
 useEffect(() => {
-  const initialiseApp = async () => {
-    const savedProfile = await AsyncStorage.getItem('caregiverProfile');
+ const initialiseApp = async () => {
+   const savedProfile = await AsyncStorage.getItem('caregiverProfile');
 
-    if (!savedProfile) {
-      router.replace('/profile-setup');
-      return;
-    }
 
-    const parsedProfile = JSON.parse(savedProfile);
+   if (!savedProfile) {
+     router.replace('/profile-setup');
+     return;
+   }
 
-    const selected = parsedProfile.children.find(
-      (child: any) => child.id === parsedProfile.selectedChildId
-    );
 
-    setSelectedChild(selected);
+   const parsedProfile = JSON.parse(savedProfile);
 
-    await Notifications.requestPermissionsAsync();
 
-    checkRisk(selected);
-  };
+   const selected = parsedProfile.children.find(
+     (child: any) => child.id === parsedProfile.selectedChildId
+   );
 
-  initialiseApp();
 
-  const interval = setInterval(async () => {
-    const savedProfile = await AsyncStorage.getItem('caregiverProfile');
+   setSelectedChild(selected);
 
-    if (savedProfile) {
-      const parsedProfile = JSON.parse(savedProfile);
 
-      const selected = parsedProfile.children.find(
-        (child: any) => child.id === parsedProfile.selectedChildId
-      );
+   await Notifications.requestPermissionsAsync();
 
-      checkRisk(selected);
-    }
-  }, 300000);
 
-  return () => clearInterval(interval);
+   checkRisk(selected);
+ };
+
+
+ initialiseApp();
+
+
+ const interval = setInterval(async () => {
+   const savedProfile = await AsyncStorage.getItem('caregiverProfile');
+
+
+   if (savedProfile) {
+     const parsedProfile = JSON.parse(savedProfile);
+     setCaregiverProfile(parsedProfile);
+
+
+     const selected = parsedProfile.children.find(
+       (child: any) => child.id === parsedProfile.selectedChildId
+     );
+
+
+     checkRisk(selected);
+   }
+ }, 300000);
+
+
+ return () => clearInterval(interval);
 }, []);
 
-  const riskColour = (risk: string) => {
-    if (risk === 'high') return '#FEE2E2';
-    if (risk === 'moderate') return '#FEF3C7';
-    return '#DCFCE7';
-  };
 
-  const riskTextColour = (risk: string) => {
-    if (risk === 'high') return '#B91C1C';
-    if (risk === 'moderate') return '#92400E';
-    return '#166534';
-  };
+ const riskColour = (risk: string) => {
+   if (risk === 'high') return '#FEE2E2';
+   if (risk === 'moderate') return '#FEF3C7';
+   return '#DCFCE7';
+ };
 
-  return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.badge}>Child Risk Intelligence</Text>
 
-      <Text style={styles.title}>Environmental Health Alert</Text>
+ const riskTextColour = (risk: string) => {
+   if (risk === 'high') return '#B91C1C';
+   if (risk === 'moderate') return '#92400E';
+   return '#166534';
+ };
 
-      <Text style={styles.subtitle}>
-        Real-time early warning for child heat stress, respiratory risk and dengue risk.
-      </Text>
+ return (
+  <SafeAreaView style={styles.safe}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.header}>
+        <View style={styles.liveRow}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>LIVE MONITORING</Text>
+        </View>
 
-      <Pressable
-        style={styles.editProfileButton}
-        onPress={() => router.push('/edit-profile')}
-      >
-        <Text style={styles.editProfileText}>Edit Profile</Text>
-      </Pressable>
+        <View style={styles.aiBadge}>
+          <Ionicons name="shield-checkmark-outline" size={17} color="#1FAE9B" />
+          <Text style={styles.aiBadgeText}>AI Monitoring Active</Text>
+        </View>
+
+        <Text style={styles.title}>Environmental{"\n"}Intelligence</Text>
+
+        <Text style={styles.subtitle}>
+          Real-time environmental risk monitoring for children&apos;s health and safety.
+        </Text>
+
+        </View>
+
+        <View style={styles.statusStrip}>
+          <View style={styles.statusItem}>
+            <View style={styles.statusIcon}>
+              <MaterialCommunityIcons name="dots-circle" size={22} color="#2F6BFF" />
+            </View>
+
+            <View>
+              <Text style={styles.statusMain}>
+                AQI {result?.environment?.pm2_5 ?? '--'}
+              </Text>
+              <Text style={styles.goodText}>
+                {result?.priority_alert ? result.priority_alert.toUpperCase() : 'Checking'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.statusDivider} />
+
+          <View style={styles.statusItem}>
+            <View style={styles.statusIcon}>
+              <Ionicons name="sync-outline" size={22} color="#2F6BFF" />
+            </View>
+
+            <View>
+              <Text style={styles.statusMain}>{loading ? 'Checking' : 'Live'}</Text>
+              <Text style={styles.statusSub}>Updated</Text>
+            </View>
+          </View>
+        </View>
 
       {selectedChild && (
-        <View style={styles.selectedChildCard}>
-          <Text style={styles.selectedChildLabel}>Currently monitoring</Text>
-          <Text style={styles.selectedChildName}>
-            {selectedChild.name}, {selectedChild.age} years old
-          </Text>
+        <View style={styles.childCard}>
+          <View style={styles.avatarCircle}>
+            <Ionicons name="person" size={40} color="#2F6B9A" />
+          </View>
+
+          <View style={styles.childInfo}>
+            <Text style={styles.childName}>
+              {selectedChild.name} · {selectedChild.age} years old
+            </Text>
+
+            <View style={styles.monitorRow}>
+              <View style={styles.smallGreenDot} />
+              <Text style={styles.monitorText}>Monitoring active</Text>
+            </View>
+
+            <Text style={styles.statusSub}>Child profile connected</Text>
+          </View>
+
+          <Pressable
+            style={styles.editButton}
+            onPress={() => router.push('/edit-profile')}
+          >
+            <Ionicons name="person-outline" size={17} color="#2F6BFF" />
+            <Text style={styles.editText}>Edit Profile</Text>
+          </Pressable>
         </View>
       )}
 
       <Pressable
-        style={styles.button}
+        style={styles.checkButton}
         onPress={() => {
           if (!selectedChild) {
             alert('Please complete child profile first.');
@@ -225,7 +332,7 @@ useEffect(() => {
           checkRisk(selectedChild);
         }}
       >
-        <Text style={styles.buttonText}>
+        <Text style={styles.checkButtonText}>
           {loading ? 'Checking...' : 'Check Current Risk'}
         </Text>
       </Pressable>
@@ -234,320 +341,577 @@ useEffect(() => {
         <View style={styles.section}>
           <View
             style={[
-              styles.priorityCard,
+              styles.riskHero,
               { backgroundColor: riskColour(result.priority_alert) },
             ]}
           >
-            <Text style={styles.cardLabel}>Priority Alert</Text>
-            <Text
-              style={[
-                styles.priorityText,
-                { color: riskTextColour(result.priority_alert) },
-              ]}
-            >
-              {result.priority_alert ? result.priority_alert.toUpperCase() : 'UNKNOWN'}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.riskLabel}>Environmental Risk Index</Text>
+              <Text
+                style={[
+                  styles.riskLevel,
+                  { color: riskTextColour(result.priority_alert) },
+                ]}
+              >
+                {result.priority_alert ? result.priority_alert.toUpperCase() : 'UNKNOWN'}
+              </Text>
+              <Text style={styles.riskDescription}>
+                Stable environmental conditions detected for this time.
+              </Text>
+            </View>
+
+            <View style={styles.riskRing}>
+              <Text
+                style={[
+                  styles.riskNumber,
+                  { color: riskTextColour(result.priority_alert) },
+                ]}
+              >
+                {result.priority_alert === 'high'
+                  ? '82'
+                  : result.priority_alert === 'moderate'
+                  ? '56'
+                  : '23'}
+              </Text>
+              <Text style={styles.riskOutOf}>/100</Text>
+            </View>
           </View>
 
-          <View style={styles.grid}>
-            <RiskCard title="Heat Stress" value={result.risks.heat_stress} emoji="🔥" />
-            <RiskCard title="Respiratory" value={result.risks.respiratory} emoji="🌫️" />
-            <RiskCard title="Dengue" value={result.risks.dengue} emoji="🦟" />
+          <View style={styles.domainRow}>
+            <RiskCard title="Heat Stress" value={result.risks.heat_stress} icon="thermometer" />
+            <RiskCard title="Respiratory" value={result.risks.respiratory} icon="lungs" />
+            <RiskCard title="Dengue" value={result.risks.dengue} icon="bug-outline" />
           </View>
 
           <View style={styles.dataCard}>
+            <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Live Environmental Data</Text>
-            <Text>Temperature: {result.environment.temperature}°C</Text>
-            <Text>Humidity: {result.environment.humidity}%</Text>
-            <Text>Rainfall: {result.environment.rainfall} mm</Text>
-            <Text>PM2.5: {result.environment.pm2_5}</Text>
+
+            <Pressable onPress={() => router.push('/map')}>
+              <Text style={styles.mapLink}>View on Map ›</Text>
+            </Pressable>
+          </View>
+
+            <View style={styles.metricRow}>
+              <Metric icon="thermometer" value={`${result.environment.temperature}°C`} label="Temperature" />
+              <Metric icon="water-outline" value={`${result.environment.humidity}%`} label="Humidity" />
+              <Metric icon="rainy-outline" value={`${result.environment.rainfall} mm`} label="Rainfall" />
+              <Metric icon="ellipse-outline" value={`${result.environment.pm2_5}`} label="PM2.5" />
+            </View>
           </View>
 
           <View style={styles.vulnerabilityCard}>
-            <Text style={styles.cardTitle}>Child Vulnerability Status</Text>
-            <Text style={styles.vulnerabilityLevel}>
-              {result.child_vulnerability.level.toUpperCase()}
-            </Text>
+            <View style={styles.shieldCircle}>
+              <Ionicons name="shield-checkmark-outline" size={26} color="#1FAE9B" />
+            </View>
 
-            {result.child_vulnerability.reasons.length > 0 ? (
-              result.child_vulnerability.reasons.map((reason: string, index: number) => (
-                <Text key={index} style={styles.vulnerabilityReason}>
-                  • {reason}
-                </Text>
-              ))
-            ) : (
-              <Text style={styles.vulnerabilityReason}>
-                No additional vulnerability indicators detected.
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Child Vulnerability Status</Text>
+              <Text style={styles.vulnerabilityLevel}>
+                {result.child_vulnerability.level.toUpperCase()}
               </Text>
-            )}
+            </View>
+
+            <View style={{ flex: 1 }}>
+              {result.child_vulnerability.reasons.length > 0 ? (
+                result.child_vulnerability.reasons.map((reason: string, index: number) => (
+                  <Text key={index} style={styles.vulnerabilityReason}>
+                    • {reason}
+                  </Text>
+                ))
+              ) : (
+                <Text style={styles.vulnerabilityReason}>
+                  No additional vulnerability indicators detected.
+                </Text>
+              )}
+            </View>
           </View>
 
           <View style={styles.actionCard}>
-            <Text style={styles.cardTitle}>Immediate Action</Text>
+            <Text style={styles.cardTitle}>Immediate Actions</Text>
 
-            {result.recommended_action?.immediate?.map((item: string, index: number) => (
-              <Text key={index} style={styles.actionText}>• {item}</Text>
-            ))}
+            <View style={styles.actionSplit}>
+              <View style={styles.recommendedBox}>
+                <Text style={styles.actionTitle}>Recommended</Text>
 
-            <Text style={styles.actionSectionTitle}>Escalate If</Text>
+                {result.recommended_action?.immediate?.map((item: string, index: number) => (
+                  <Text key={index} style={styles.actionText}>✓ {item}</Text>
+                ))}
+              </View>
 
-            {result.recommended_action?.when_to_escalate?.map((item: string, index: number) => (
-              <Text key={index} style={styles.actionText}>• {item}</Text>
-            ))}
+              <View style={styles.escalateBox}>
+                <Text style={styles.actionTitle}>Escalate if</Text>
+
+                {result.recommended_action?.when_to_escalate?.map((item: string, index: number) => (
+                  <Text key={index} style={styles.actionText}>• {item}</Text>
+                ))}
+              </View>
+            </View>
           </View>
 
           <Pressable style={styles.shareButton} onPress={shareAlert}>
-            <Text style={styles.shareButtonText}>Share Alert</Text>
-          </Pressable>
+            <View style={styles.shareIcon}>
+              <Ionicons name="paper-plane-outline" size={22} color="#FFFFFF" />
+            </View>
 
+            <View style={{ flex: 1 }}>
+              <Text style={styles.shareTitle}>Share Alert Summary</Text>
+              <Text style={styles.shareSub}>
+                Send this report to caregivers or health professionals
+              </Text>
+            </View>
+
+            <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
+          </Pressable>
         </View>
       )}
     </ScrollView>
+  </SafeAreaView>
+);
+}
+
+function RiskCard({ title, value, icon }: any) {
+  const colour =
+    value === 'high' ? '#B91C1C' : value === 'moderate' ? '#D97706' : '#166534';
+
+  const bgColour =
+    value === 'high' ? '#FEE2E2' : value === 'moderate' ? '#FEF3C7' : '#DCFCE7';
+
+  return (
+    <View style={styles.riskCard}>
+      <View style={[styles.domainIcon, { backgroundColor: bgColour }]}>
+        <MaterialCommunityIcons name={icon} size={25} color={colour} />
+      </View>
+
+      <Text style={styles.riskTitle}>{title}</Text>
+      <Text style={[styles.riskValue, { color: colour }]}>
+        {value.toUpperCase()}
+      </Text>
+      <Text style={styles.domainScore}>Risk domain</Text>
+
+      <View style={[styles.sparkLine, { backgroundColor: colour }]} />
+    </View>
   );
 }
 
-function RiskCard({ title, value, emoji }: any) {
-  const colour =
-    value === 'high' ? '#FEE2E2' : value === 'moderate' ? '#FEF3C7' : '#DCFCE7';
-
-  const textColour =
-    value === 'high' ? '#B91C1C' : value === 'moderate' ? '#92400E' : '#166534';
-
+function Metric({ icon, value, label }: any) {
   return (
-    <View style={[styles.riskCard, { backgroundColor: colour }]}>
-      <Text style={styles.emoji}>{emoji}</Text>
-      <Text style={styles.riskTitle}>{title}</Text>
-      <Text style={[styles.riskValue, { color: textColour }]}>
-        {value.toUpperCase()}
-      </Text>
+    <View style={styles.metricCard}>
+      <Ionicons name={icon} size={21} color="#2F6B9A" />
+      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={styles.metricLabel}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 24,
-    paddingTop: 80,
-    backgroundColor: '#F8FAFC',
-    minHeight: '100%',
+  safe: {
+    flex: 1,
+    backgroundColor: '#F5F8FC',
   },
-  badge: {
-    alignSelf: 'center',
-    backgroundColor: '#E0F2FE',
-    color: '#0369A1',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    fontWeight: '600',
+  screen: {
+    flex: 1,
+    backgroundColor: '#F5F8FC',
+  },
+  container: {
+    paddingHorizontal: 24,
+    paddingTop: 34,
+    paddingBottom: 130,
+  },
+  header: {
+    position: 'relative',
+    marginBottom: 20,
+  },
+  liveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
   },
-  title: {
-    fontSize: 32,
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#36D399',
+    marginRight: 8,
+  },
+  liveText: {
+    color: '#245DCC',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  aiBadge: {
+    position: 'absolute',
+    right: 0,
+    top: -6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
+  },
+  aiBadgeText: {
+    color: '#1FAE9B',
+    fontSize: 13,
     fontWeight: '800',
-    textAlign: 'center',
-    color: '#0F172A',
-    marginBottom: 12,
+  },
+  title: {
+    color: '#101828',
+    fontSize: 42,
+    lineHeight: 46,
+    fontWeight: '900',
+    letterSpacing: -1.3,
+    marginTop: 8,
   },
   subtitle: {
+    color: '#667085',
     fontSize: 16,
-    textAlign: 'center',
-    color: '#64748B',
-    marginBottom: 28,
-    lineHeight: 23,
+    lineHeight: 24,
+    marginTop: 16,
+    maxWidth: 310,
   },
-  button: {
-    backgroundColor: '#0F172A',
+  statusStrip: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
     paddingVertical: 16,
-    borderRadius: 16,
-    marginBottom: 24,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E6EBF2',
+    marginBottom: 18,
   },
-  buttonText: {
-    color: 'white',
+  statusItem: {
+    flex: 1,
+     justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statusIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F0F5FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#D7DEE8',
+    marginHorizontal: 8,
+  },
+  statusMain: {
+    color: '#101828',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  statusSub: {
+    color: '#7A8496',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  goodText: {
+    color: '#18A66A',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  childCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    borderWidth: 1,
+    borderColor: '#E6EBF2',
+    marginBottom: 18,
+  },
+  avatarCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#DCEEFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  childInfo: {
+    flex: 1,
+  },
+  childName: {
+    color: '#101828',
+    fontSize: 21,
+    fontWeight: '900',
+  },
+  monitorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  smallGreenDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#1FAE9B',
+    marginRight: 7,
+  },
+  monitorText: {
+    color: '#168C6E',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  editButton: {
+    backgroundColor: '#EEF5FF',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  editText: {
+    color: '#2F6BFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  checkButton: {
+    backgroundColor: '#101828',
+    borderRadius: 22,
+    paddingVertical: 18,
+    marginBottom: 20,
+  },
+  checkButtonText: {
+    color: '#FFFFFF',
     textAlign: 'center',
-    fontWeight: '700',
-    fontSize: 16,
+    fontSize: 17,
+    fontWeight: '900',
   },
   section: {
     gap: 16,
   },
-  priorityCard: {
-    padding: 22,
+  riskHero: {
     borderRadius: 24,
+    padding: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  cardLabel: {
-    color: '#475569',
-    fontWeight: '600',
-    marginBottom: 6,
+  riskLabel: {
+    color: '#667085',
+    fontSize: 15,
+    fontWeight: '900',
   },
-  priorityText: {
+  riskLevel: {
     fontSize: 34,
     fontWeight: '900',
+    marginTop: 8,
   },
-  grid: {
-    gap: 12,
-  },
-  riskCard: {
-    padding: 18,
-    borderRadius: 22,
-  },
-  emoji: {
-    fontSize: 28,
-    marginBottom: 8,
-  },
-  riskTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  riskValue: {
+  riskDescription: {
+    color: '#667085',
+    fontSize: 14,
+    lineHeight: 20,
     marginTop: 6,
-    fontSize: 18,
+    maxWidth: 210,
+  },
+  riskRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 10,
+    borderColor: '#BEEFD0',
+    backgroundColor: '#EDFFF4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  riskNumber: {
+    fontSize: 32,
     fontWeight: '900',
   },
-  dataCard: {
-    backgroundColor: 'white',
-    padding: 18,
-    borderRadius: 22,
-  },
-  actionCard: {
-    backgroundColor: '#EFF6FF',
-    padding: 18,
-    borderRadius: 22,
-  },
-  cardTitle: {
-    fontSize: 18,
+  riskOutOf: {
+    color: '#667085',
+    fontSize: 13,
     fontWeight: '800',
+  },
+  domainRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  riskCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: '#E6EBF2',
+  },
+  domainIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 10,
-    color: '#0F172A',
   },
-  actionText: {
-    color: '#1E3A8A',
-    lineHeight: 22,
+  riskTitle: {
+    color: '#101828',
+    fontSize: 13,
+    fontWeight: '900',
   },
-  profileCard: {
-  backgroundColor: 'white',
-  padding: 18,
-  borderRadius: 22,
-  marginBottom: 20,
+  riskValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 2,
   },
-  profileRow: {
+  domainScore: {
+    color: '#667085',
+    fontSize: 11,
+    marginTop: 3,
+  },
+  sparkLine: {
+    height: 3,
+    borderRadius: 3,
+    opacity: 0.55,
+    marginTop: 10,
+  },
+  dataCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E6EBF2',
+  },
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
+    marginBottom: 14,
   },
-  profileLabel: {
-    fontSize: 15,
-    color: '#0F172A',
-    fontWeight: '600',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  forecastCard: {
-    backgroundColor: '#F3F7FF',
-    padding: 12,
-    borderRadius: 12,
-    marginTop: 10,
-  },
-  forecastDay: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 6,
-  },
-  forecastHeader: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: 12,
-  },
-  forecastBadge: {
+  cardTitle: {
+    color: '#101828',
+    fontSize: 17,
     fontWeight: '900',
-    fontSize: 13,
-    letterSpacing: 0.5,
+    marginBottom: 4,
   },
-  forecastGrid: {
-    gap: 6,
+  mapLink: {
+    color: '#2F6BFF',
+    fontSize: 14,
+    fontWeight: '800',
   },
-  metricLabel: {
-    color: '#64748B',
-    fontSize: 13,
-    fontWeight: '600',
+  metricRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E6EBF2',
   },
   metricValue: {
-    color: '#0F172A',
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 6,
+    color: '#101828',
+    fontSize: 15,
+    fontWeight: '900',
+    marginTop: 8,
+  },
+  metricLabel: {
+    color: '#667085',
+    fontSize: 10,
+    marginTop: 6,
   },
   vulnerabilityCard: {
-    backgroundColor: '#F8FAFC',
-    padding: 18,
+    backgroundColor: '#FFFFFF',
     borderRadius: 22,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: '#E6EBF2',
+  },
+  shieldCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#E3F8EA',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   vulnerabilityLevel: {
-    fontSize: 22,
+    color: '#28764D',
+    fontSize: 20,
     fontWeight: '900',
-    color: '#0F172A',
-    marginBottom: 8,
-  },
-  vulnerabilityReason: {
-    fontSize: 14,
-    color: '#475569',
-    lineHeight: 21,
     marginTop: 4,
   },
+  vulnerabilityReason: {
+    color: '#667085',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  actionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E6EBF2',
+  },
+  actionSplit: {
+    flexDirection: 'row',
+    marginTop: 14,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  recommendedBox: {
+    flex: 1,
+    backgroundColor: '#ECFFF4',
+    padding: 14,
+  },
+  escalateBox: {
+    flex: 1,
+    backgroundColor: '#FFF7E8',
+    padding: 14,
+  },
+  actionTitle: {
+    color: '#101828',
+    fontSize: 13,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+  actionText: {
+    color: '#667085',
+    fontSize: 12,
+    lineHeight: 18,
+  },
   shareButton: {
-  backgroundColor: '#1D4ED8',
-  paddingVertical: 16,
-  borderRadius: 18,
-  marginTop: 4,
+    backgroundColor: '#2F55E7',
+    borderRadius: 22,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
-
-  shareButtonText: {
-    color: 'white',
-    textAlign: 'center',
-    fontWeight: '800',
-    fontSize: 16,
+  shareIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  actionSectionTitle: {
-  fontSize: 14,
-  fontWeight: '900',
-  color: '#1E3A8A',
-  marginTop: 10,
-  marginBottom: 4,
+  shareTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
   },
-  editProfileButton: {
-  alignSelf: 'center',
-  marginBottom: 18,
-  },
-  editProfileText: {
-  color: '#2563EB',
-  fontWeight: '700',
-  fontSize: 15,
-  },
-  selectedChildCard: {
-  backgroundColor: 'white',
-  padding: 16,
-  borderRadius: 18,
-  marginBottom: 18,
-  borderWidth: 1,
-  borderColor: '#CBD5E1',
-  },
-  selectedChildLabel: {
-  color: '#64748B',
-  fontSize: 13,
-  fontWeight: '600',
-  marginBottom: 4,
-  },
-  selectedChildName: {
-  color: '#0F172A',
-  fontSize: 18,
-  fontWeight: '900',
+  shareSub: {
+    color: '#DDE6FF',
+    fontSize: 12,
+    marginTop: 3,
   },
 });
