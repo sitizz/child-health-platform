@@ -125,7 +125,9 @@ Environmental Conditions:
 Temperature: ${result.environment.temperature}°C
 Humidity: ${result.environment.humidity}%
 Rainfall: ${result.environment.rainfall} mm
-PM2.5: ${result.environment.pm2_5}
+AQI (US): ${result.environment.aqi ?? 'Unavailable'}
+PM2.5: ${result.environment.pm2_5} µg/m³
+PM10: ${result.environment.pm10} µg/m³
 
 
 Child Vulnerability:
@@ -270,7 +272,7 @@ useEffect(() => {
 
             <View>
               <Text style={styles.statusMain}>
-                AQI {result?.environment?.pm2_5 ?? '--'}
+                AQI {result?.environment?.aqi ?? '--'}
               </Text>
               <Text style={styles.goodText}>
                 {result?.priority_alert ? result.priority_alert.toUpperCase() : 'Checking'}
@@ -396,7 +398,7 @@ useEffect(() => {
               <Metric icon="thermometer" value={`${result.environment.temperature}°C`} label="Temperature" />
               <Metric icon="water-outline" value={`${result.environment.humidity}%`} label="Humidity" />
               <Metric icon="rainy-outline" value={`${result.environment.rainfall} mm`} label="Rainfall" />
-              <Metric icon="ellipse-outline" value={`${result.environment.pm2_5}`} label="PM2.5" />
+              <Metric icon="ellipse-outline" value={`${result.environment.pm2_5} µg/m³`} label="PM2.5" />
             </View>
           </View>
 

@@ -41,7 +41,7 @@ def environment_risk(
     air_url = (
         f"https://air-quality-api.open-meteo.com/v1/air-quality"
         f"?latitude={lat}&longitude={lon}"
-        f"&current=pm2_5,pm10"
+        f"&current=us_aqi,pm2_5,pm10"
     )
 
 
@@ -57,6 +57,7 @@ def environment_risk(
     humidity = weather["current"]["relative_humidity_2m"]
     rainfall = weather["current"]["precipitation"]
 
+    aqi = air["current"]["us_aqi"]
     pm25 = air["current"]["pm2_5"]
     pm10 = air["current"]["pm10"]
 
@@ -509,6 +510,7 @@ def environment_risk(
             "temperature": temperature,
             "humidity": humidity,
             "rainfall": rainfall,
+            "aqi": aqi,
             "pm2_5": pm25,
             "pm10": pm10,
         },

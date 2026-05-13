@@ -12,22 +12,51 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
+        tabBarActiveTintColor: '#2F6BFF',
+        tabBarInactiveTintColor: '#94A3B8',
         tabBarButton: HapticTab,
-      }}>
+        tabBarStyle: {
+          height: 84,
+          paddingTop: 10,
+          paddingBottom: 18,
+          backgroundColor: '#FFFFFF',
+          borderTopWidth: 1,
+          borderTopColor: '#E6EBF2',
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '700',
+        },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={24} name="house.fill" color={color} />
+          ),
         }}
       />
+
       <Tabs.Screen
-        name="explore"
+        name="map"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Map',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={24} name="location.fill" color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="intelligence"
+        options={{
+          title: 'Intelligence',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={24} name="sparkles" color={color} />
+          ),
         }}
       />
     </Tabs>
