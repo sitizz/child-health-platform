@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+} from 'react-native';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 const API_URL = 'https://child-health-platform.onrender.com';
 
@@ -78,6 +87,10 @@ export default function FullForecastScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <Pressable style={styles.backButton} onPress={() => router.back()}>
+        <Ionicons name="chevron-back" size={28} color="#101828" />
+     </Pressable>
+
       <Text style={styles.header}>Full Environmental Forecast</Text>
 
       {forecast.map((day: any) => (
@@ -156,4 +169,16 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginTop: 14,
   },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+    borderWidth: 1,
+    borderColor: '#E6EBF2',
+  },
+  
 });

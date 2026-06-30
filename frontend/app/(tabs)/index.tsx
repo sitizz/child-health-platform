@@ -172,8 +172,21 @@ useFocusEffect(
 
 useEffect(() => {
  const initialiseApp = async () => {
-   const savedProfile = await AsyncStorage.getItem('caregiverProfile');
+   const authSession = await AsyncStorage.getItem('authSession');
 
+   if (!authSession) {
+     router.replace('/login');
+     return;
+   }
+
+   const consent = await AsyncStorage.getItem('pilotConsent');
+
+   if (!consent) {
+     router.replace('/consent');
+     return;
+   }
+
+   const savedProfile = await AsyncStorage.getItem('caregiverProfile');
 
    if (!savedProfile) {
      router.replace('/profile-setup');
