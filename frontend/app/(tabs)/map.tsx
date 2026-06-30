@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_URL = 'https://child-health-platform.onrender.com';
 
@@ -30,6 +31,24 @@ export default function RegionalRiskMapScreen() {
       const lat = location.coords.latitude;
       const lon = location.coords.longitude;
 
+      const savedProfile = await AsyncStorage.getItem('caregiverProfile');
+
+      if (!savedProfile) {
+        alert('Please complete child profile first.');
+        return;
+      }
+
+      const parsedProfile = JSON.parse(savedProfile);
+
+      const selected = parsedProfile.children.find(
+        (child: any) => child.id === parsedProfile.selectedChildId
+      );
+
+      if (!selected) {
+        alert('Selected child profile not found.');
+        return;
+      }
+
       setRegion({
         latitude: lat,
         longitude: lon,
@@ -45,10 +64,17 @@ export default function RegionalRiskMapScreen() {
         { label: 'West zone', lat, lon: lon - 0.05 },
       ];
     const results = await Promise.allSettled(
-  samplePoints.map(async point => {
-    const response = await fetch(
-      `${API_URL}/environment-risk?lat=${point.lat}&lon=${point.lon}&age_group=under5`
-    );
+      samplePoints.map(async point => {
+        const response = await fetch(
+          `${API_URL}/environment-risk?lat=${point.lat}&lon=${point.lon}` +
+            `&age_group=${selected.age_group}` +
+            `&asthma=${selected.asthma}` +
+            `&fever=${selected.fever}` +
+            `&cough=${selected.cough}` +
+            `&dehydration=${selected.dehydration}` +
+            `&mosquito_exposure=${selected.mosquito_exposure}` +
+            `&flood_exposure=${selected.flood_exposure}`
+         );
 
     const text = await response.text();
 
@@ -94,10 +120,12 @@ setPoints(successfulResults);
     if (risks.heat_stress === 'high') return 'Heat stress';
     if (risks.respiratory === 'high') return 'Respiratory';
     if (risks.dengue === 'high') return 'Dengue';
+    if (risks.flood === 'high') return 'Flood';
 
     if (risks.heat_stress === 'moderate') return 'Heat stress';
     if (risks.respiratory === 'moderate') return 'Respiratory';
     if (risks.dengue === 'moderate') return 'Dengue';
+    if (risks.flood === 'moderate') return 'Flood';
 
     return 'Low combined risk';
   }

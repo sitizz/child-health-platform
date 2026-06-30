@@ -238,6 +238,16 @@ useEffect(() => {
    return '#166534';
  };
 
+const getAqiLevel = (aqi: number) => {
+  if (!aqi) return 'checking';
+  if (aqi <= 50) return 'good';
+  if (aqi <= 100) return 'moderate';
+  if (aqi <= 150) return 'unhealthy for sensitive groups';
+  if (aqi <= 200) return 'unhealthy';
+  if (aqi <= 300) return 'very unhealthy';
+  return 'hazardous';
+};
+
  return (
   <SafeAreaView style={styles.safe}>
     <ScrollView
@@ -275,7 +285,7 @@ useEffect(() => {
                 AQI {result?.environment?.aqi ?? '--'}
               </Text>
               <Text style={styles.goodText}>
-                {result?.priority_alert ? result.priority_alert.toUpperCase() : 'Checking'}
+                {getAqiLevel(result?.environment?.aqi).toUpperCase()}
               </Text>
             </View>
           </View>
@@ -409,7 +419,12 @@ useEffect(() => {
 
             <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>Child Vulnerability Status</Text>
-              <Text style={styles.vulnerabilityLevel}>
+              <Text
+                style={[
+                  styles.vulnerabilityLevel,
+                  { color: riskTextColour(result.child_vulnerability.level) },
+                ]}
+              >
                 {result.child_vulnerability.level.toUpperCase()}
               </Text>
             </View>

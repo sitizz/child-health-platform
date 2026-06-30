@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_URL = 'https://child-health-platform.onrender.com';
 
@@ -28,17 +29,42 @@ export default function FullForecastScreen() {
       const lat = location.coords.latitude;
       const lon = location.coords.longitude;
 
+      const savedProfile = await AsyncStorage.getItem('caregiverProfile');
+
+      if (!savedProfile) {
+        alert('Please complete child profile first.');
+        return;
+      }
+
+      const parsedProfile = JSON.parse(savedProfile);
+
+      const selected = parsedProfile.children.find(
+        (child: any) => child.id === parsedProfile.selectedChildId
+      );
+
+      if (!selected) {
+        alert('Selected child profile not found.');
+        return;
+      }
+
       const response = await fetch(
-        `${API_URL}/environment-risk?lat=${lat}&lon=${lon}&age_group=under5`
+        `${API_URL}/environment-risk?lat=${lat}&lon=${lon}` +
+          `&age_group=${selected.age_group}` +
+          `&asthma=${selected.asthma}` +
+          `&fever=${selected.fever}` +
+          `&cough=${selected.cough}` +
+          `&dehydration=${selected.dehydration}` +
+          `&mosquito_exposure=${selected.mosquito_exposure}` +
+          `&flood_exposure=${selected.flood_exposure}`
       );
 
       const result = await response.json();
       setForecast(result.forecast || []);
-    } catch (error) {
-      console.error('Full forecast error:', error);
-    } finally {
-      setLoading(false);
-    }
+      } catch (error) {
+        console.error('Full forecast error:', error);
+      } finally {
+        setLoading(false);
+      }
   }
 
   if (loading) {

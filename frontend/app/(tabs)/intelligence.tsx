@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View,  Pressable } from 'react-native';
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
@@ -30,18 +31,44 @@ const location = await Location.getCurrentPositionAsync({
 const lat = location.coords.latitude;
 const lon = location.coords.longitude;
 
-const response = await fetch(
-  `${API_URL}/environment-risk?lat=${lat}&lon=${lon}&age_group=under5`
+const savedProfile = await AsyncStorage.getItem('caregiverProfile');
+
+if (!savedProfile) {
+  alert('Please complete child profile first.');
+  return;
+}
+
+const parsedProfile = JSON.parse(savedProfile);
+
+const selected = parsedProfile.children.find(
+  (child: any) => child.id === parsedProfile.selectedChildId
 );
 
-      const result = await response.json();
-      setData(result);
-    } catch (error) {
-      console.error('Risk intelligence error:', error);
-    } finally {
-      setLoading(false);
-    }
+if (!selected) {
+  alert('Selected child profile not found.');
+  return;
+}
+
+const response = await fetch(
+  `${API_URL}/environment-risk?lat=${lat}&lon=${lon}` +
+  `&age_group=${selected.age_group}` +
+  `&asthma=${selected.asthma}` +
+  `&fever=${selected.fever}` +
+  `&cough=${selected.cough}` +
+  `&dehydration=${selected.dehydration}` +
+  `&mosquito_exposure=${selected.mosquito_exposure}` +
+  `&flood_exposure=${selected.flood_exposure}`
+);
+
+const result = await response.json();
+setData(result);
+
+  } catch (error) {
+    console.error('Risk intelligence error:', error);
+  } finally {
+    setLoading(false);
   }
+}
 
   if (loading) {
     return (
@@ -95,6 +122,12 @@ const response = await fetch(
           title="Dengue Watch"
           value={data.predictive_domains.dengue}
           icon="bug-outline"
+        />
+
+        <RiskCard
+          title="Flood Risk"
+          value={data.risks.flood}
+          icon="waves-arrow-up"
         />
       </View>
     </View>
