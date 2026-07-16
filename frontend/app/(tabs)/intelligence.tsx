@@ -1,74 +1,48 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View,  Pressable } from 'react-native';
-import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
-const API_URL = 'https://child-health-platform.onrender.com';
+import { ApiError, fetchEnvironmentRisk, type EnvironmentRisk } from '@/lib/api';
+import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
+import { riskBg, riskText } from '@/lib/risk';
 
 export default function RiskIntelligenceScreen() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<EnvironmentRisk | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchRiskData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const child = await loadSelectedChild();
+
+      if (!child) {
+        setError('Please complete the child profile first.');
+        return;
+      }
+
+      const { lat, lon } = await getCurrentCoords();
+
+      setData(await fetchEnvironmentRisk(child, lat, lon));
+    } catch (err) {
+      console.error('Risk intelligence error:', err);
+
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'Unable to load risk intelligence. Please try again.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchRiskData();
-  }, []);
-
-  async function fetchRiskData() {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-
-if (status !== 'granted') {
-  alert('Location permission is needed to check local environmental risk.');
-  return;
-}
-
-const location = await Location.getCurrentPositionAsync({
-  accuracy: Location.Accuracy.Balanced,
-});
-
-const lat = location.coords.latitude;
-const lon = location.coords.longitude;
-
-const savedProfile = await AsyncStorage.getItem('caregiverProfile');
-
-if (!savedProfile) {
-  alert('Please complete child profile first.');
-  return;
-}
-
-const parsedProfile = JSON.parse(savedProfile);
-
-const selected = parsedProfile.children.find(
-  (child: any) => child.id === parsedProfile.selectedChildId
-);
-
-if (!selected) {
-  alert('Selected child profile not found.');
-  return;
-}
-
-const response = await fetch(
-  `${API_URL}/environment-risk?lat=${lat}&lon=${lon}` +
-  `&age_group=${selected.age_group}` +
-  `&asthma=${selected.asthma}` +
-  `&fever=${selected.fever}` +
-  `&cough=${selected.cough}` +
-  `&dehydration=${selected.dehydration}` +
-  `&mosquito_exposure=${selected.mosquito_exposure}` +
-  `&flood_exposure=${selected.flood_exposure}`
-);
-
-const result = await response.json();
-setData(result);
-
-  } catch (error) {
-    console.error('Risk intelligence error:', error);
-  } finally {
-    setLoading(false);
-  }
-}
+  }, [fetchRiskData]);
 
   if (loading) {
     return (
@@ -79,10 +53,18 @@ setData(result);
     );
   }
 
-  if (!data) {
+  // An error response is a truthy object, so `!data` alone let 401 bodies reach
+  // the render path below and crash on data.predictive_domains.
+  if (error || !data) {
     return (
       <View style={styles.center}>
-        <Text>Unable to load risk intelligence.</Text>
+        <Ionicons name="cloud-offline-outline" size={44} color="#94A3B8" />
+        <Text style={styles.errorTitle}>Unable to load risk intelligence</Text>
+        <Text style={styles.loadingText}>{error ?? 'Please try again.'}</Text>
+
+        <Pressable style={styles.retryButton} onPress={fetchRiskData}>
+          <Text style={styles.retryText}>Try Again</Text>
+        </Pressable>
       </View>
     );
   }
@@ -135,15 +117,25 @@ setData(result);
     <View style={styles.outlookPanel}>
       <View style={{ flex: 1 }}>
         <Text style={styles.panelTitle}>72-Hour Outlook</Text>
-        <Text style={styles.largeValue}>{data.trend.direction.toUpperCase()}</Text>
-        <Text style={styles.bodyText}>{data.trend.message}</Text>
+        <Text style={styles.largeValue}>
+          {data.trend?.direction?.toUpperCase() ?? 'UNKNOWN'}
+        </Text>
+        <Text style={styles.bodyText}>{data.trend?.message}</Text>
       </View>
 
-      <View style={styles.gauge}>
-        <Text style={styles.gaugeValue}>
-          {data.trend.direction === 'stable' ? '58' : '72'}
+      <View
+        style={[
+          styles.gauge,
+          {
+            borderColor: riskBg(data.priority_alert),
+            backgroundColor: '#F8FAFC',
+          },
+        ]}
+      >
+        <Text style={[styles.gaugeValue, { color: riskText(data.priority_alert) }]}>
+          {data.priority_alert?.toUpperCase() ?? '—'}
         </Text>
-        <Text style={styles.gaugeLabel}>/100</Text>
+        <Text style={styles.gaugeLabel}>now</Text>
       </View>
     </View>
 
@@ -190,7 +182,7 @@ setData(result);
     </View>
 
       <View style={styles.forecastGrid}>
-        {data.forecast.slice(0, 3).map((day: any) => (
+        {(data.forecast ?? []).slice(0, 3).map((day: any) => (
           <View key={day.day} style={styles.forecastRow}>
             <Ionicons
               name={day.rainfall > 5 ? 'rainy-outline' : 'partly-sunny-outline'}
@@ -202,7 +194,9 @@ setData(result);
               {day.max_temperature}°C
             </Text>
             <Text style={styles.forecastRain}>{day.rainfall}mm rain</Text>
-            <Text style={styles.riskBadge}>{day.predicted_risk.toUpperCase()}</Text>
+            <Text style={[styles.riskBadge, { color: riskText(day.predicted_risk) }]}>
+              {day.predicted_risk?.toUpperCase() ?? 'UNKNOWN'}
+            </Text>
           </View>
         ))}
       </View>
@@ -212,21 +206,23 @@ setData(result);
       <View style={styles.escalationPanel}>
         <Ionicons name="shield-checkmark-outline" size={28} color="#D97706" />
         <Text style={styles.panelTitle}>Escalation Status</Text>
-        <Text style={styles.escalationValue}>{data.escalation.level.toUpperCase()}</Text>
-        <Text style={styles.darkBodyText}>{data.escalation.reason}</Text>
+        <Text style={styles.escalationValue}>
+          {data.escalation?.level?.toUpperCase() ?? 'UNKNOWN'}
+        </Text>
+        <Text style={styles.darkBodyText}>{data.escalation?.reason}</Text>
       </View>
 
       <View style={styles.guidancePanel}>
         <Ionicons name="sparkles-outline" size={26} color="#2F6BFF" />
         <Text style={styles.guidanceTitle}>Age-Specific Guidance</Text>
-        <Text style={styles.guidanceSummary}>{data.guidance.summary}</Text>
+        <Text style={styles.guidanceSummary}>{data.guidance?.summary}</Text>
       </View>
     </View>
 
     <View style={styles.fullGuidanceCard}>
       <Text style={styles.workflowTitle}>Key Guidance Points</Text>
 
-      {data.guidance.key_points?.map((point: string, index: number) => (
+      {data.guidance?.key_points?.map((point: string, index: number) => (
         <View key={index} style={styles.guidancePoint}>
           <Text style={styles.bullet}>•</Text>
           <Text style={styles.guidanceText}>{point}</Text>
@@ -243,14 +239,11 @@ function RiskCard({
   icon,
 }: {
   title: string;
-  value: string;
+  value: string | undefined;
   icon: any;
 }) {
-  const colour =
-    value === 'high' ? '#DC2626' : value === 'moderate' ? '#D97706' : '#168C6E';
-
-  const bgColour =
-    value === 'high' ? '#FEE2E2' : value === 'moderate' ? '#FEF3C7' : '#DCFCE7';
+  const colour = riskText(value);
+  const bgColour = riskBg(value);
 
   return (
     <View style={styles.card}>
@@ -260,14 +253,10 @@ function RiskCard({
 
       <Text style={styles.cardTitle}>{title}</Text>
       <Text style={[styles.cardValue, { color: colour }]}>
-        {value.toUpperCase()}
+        {value?.toUpperCase() ?? 'UNKNOWN'}
       </Text>
 
       <View style={[styles.trendLine, { backgroundColor: colour }]} />
-
-      <Text style={styles.trendText}>
-        Trend: {value === 'high' ? 'Rising ↗' : 'Stable'}
-      </Text>
     </View>
   );
 }
@@ -294,6 +283,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#4B5563',
     textAlign: 'center',
+  },
+  errorTitle: {
+    marginTop: 14,
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#101828',
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: '#2F6BFF',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 30,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
   },
   headerBlock: {
     marginBottom: 26,

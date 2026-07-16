@@ -1,53 +1,30 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 
-const API_URL = 'https://child-health-platform.onrender.com';
+import { ApiError, fetchEnvironmentRisk } from '@/lib/api';
+import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
 
 export default function RegionalRiskMapScreen() {
   const [region, setRegion] = useState<any>(null);
   const [points, setPoints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadRegionalRisk();
-  }, []);
-
-  async function loadRegionalRisk() {
+  const loadRegionalRisk = useCallback(async () => {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      setLoading(true);
+      setError(null);
 
-      if (status !== 'granted') {
-        alert('Location permission is needed to build the regional risk map.');
-        return;
-      }
-
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const lat = location.coords.latitude;
-      const lon = location.coords.longitude;
-
-      const savedProfile = await AsyncStorage.getItem('caregiverProfile');
-
-      if (!savedProfile) {
-        alert('Please complete child profile first.');
-        return;
-      }
-
-      const parsedProfile = JSON.parse(savedProfile);
-
-      const selected = parsedProfile.children.find(
-        (child: any) => child.id === parsedProfile.selectedChildId
-      );
+      const selected = await loadSelectedChild();
 
       if (!selected) {
-        alert('Selected child profile not found.');
+        setError('Please complete the child profile first.');
         return;
       }
+
+      const { lat, lon } = await getCurrentCoords();
 
       setRegion({
         latitude: lat,
@@ -63,58 +40,58 @@ export default function RegionalRiskMapScreen() {
         { label: 'East zone', lat, lon: lon + 0.05 },
         { label: 'West zone', lat, lon: lon - 0.05 },
       ];
-    const results = await Promise.allSettled(
-      samplePoints.map(async point => {
-        const response = await fetch(
-          `${API_URL}/environment-risk?lat=${point.lat}&lon=${point.lon}` +
-            `&age_group=${selected.age_group}` +
-            `&asthma=${selected.asthma}` +
-            `&fever=${selected.fever}` +
-            `&cough=${selected.cough}` +
-            `&dehydration=${selected.dehydration}` +
-            `&mosquito_exposure=${selected.mosquito_exposure}` +
-            `&flood_exposure=${selected.flood_exposure}`
-         );
 
-    const text = await response.text();
+      const results = await Promise.allSettled(
+        samplePoints.map(async (point) => {
+          const data = await fetchEnvironmentRisk(selected, point.lat, point.lon);
+          const reasons = data.risk_reasons || {};
 
-    if (!response.ok) {
-      throw new Error(text);
-    }
+          return {
+            ...point,
+            priority_alert: data.priority_alert,
+            top_threat: getTopThreat(data.risks),
+            reason:
+              reasons.heat_stress?.[0] ||
+              reasons.respiratory?.[0] ||
+              reasons.dengue?.[0] ||
+              reasons.flood?.[0] ||
+              'No major risk driver detected',
+            action: data.action,
+          };
+        })
+      );
 
-    const data = JSON.parse(text);
+      const successfulResults = results
+        .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled')
+        .map((result) => result.value);
 
-    const topThreat = getTopThreat(data.risks);
-    const reasons = data.risk_reasons || {};
+      // Every zone failing means the service is unreachable, not that the area
+      // is risk-free. Showing an empty map would imply the latter.
+      if (!successfulResults.length) {
+        const firstRejection = results.find(
+          (r): r is PromiseRejectedResult => r.status === 'rejected'
+        );
 
-    return {
-      ...point,
-      priority_alert: data.priority_alert,
-      top_threat: topThreat,
-      reason:
-        reasons.heat_stress?.[0] ||
-        reasons.respiratory?.[0] ||
-        reasons.dengue?.[0] ||
-        reasons.flood?.[0] ||
-        'No major risk driver detected',
-      action: data.action,
-    };
-  })
-);
+        throw firstRejection?.reason instanceof ApiError
+          ? firstRejection.reason
+          : new ApiError(0, 'Unable to load regional risk map.');
+      }
 
-const successfulResults = results
-  .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled')
-  .map(result => result.value);
+      setPoints(successfulResults);
+    } catch (err) {
+      console.error('Regional map error:', err);
 
-setPoints(successfulResults);
-
-    } catch (error) {
-      console.error('Regional map error:', error);
-      alert('Unable to load regional risk map.');
+      setError(
+        err instanceof ApiError ? err.message : 'Unable to load regional risk map.'
+      );
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    loadRegionalRisk();
+  }, [loadRegionalRisk]);
 
   function getTopThreat(risks: any) {
     if (risks.heat_stress === 'high') return 'Heat stress';
@@ -142,11 +119,27 @@ setPoints(successfulResults);
     return 'green';
   }
 
-  if (loading || !region) {
+  if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
         <Text style={styles.loadingText}>Building regional risk map...</Text>
+      </View>
+    );
+  }
+
+  // Previously `loading || !region` — once loading finished with no region
+  // (denied permission, missing profile), this spun forever with no way out.
+  if (error || !region) {
+    return (
+      <View style={styles.center}>
+        <Ionicons name="map-outline" size={44} color="#94A3B8" />
+        <Text style={styles.errorTitle}>Regional map unavailable</Text>
+        <Text style={styles.loadingText}>{error ?? 'Location is required to build the map.'}</Text>
+
+        <Pressable style={styles.retryButton} onPress={loadRegionalRisk}>
+          <Text style={styles.retryText}>Try Again</Text>
+        </Pressable>
       </View>
     );
   }
@@ -162,7 +155,7 @@ setPoints(successfulResults);
               longitude: point.lon,
             }}
             pinColor={markerColour(point.priority_alert)}
-            title={`${point.label}: ${point.priority_alert.toUpperCase()}`}
+            title={`${point.label}: ${point.priority_alert?.toUpperCase() ?? 'UNKNOWN'}`}
             description={`Top threat: ${point.top_threat}. Driver: ${point.reason}`}
           />
         ))}
@@ -189,7 +182,7 @@ setPoints(successfulResults);
              .map((point, index) => (
              <View key={index} style={styles.priorityItem}>
                  <Text style={styles.priorityZone}>
-                 {index + 1}. {point.label} — {point.priority_alert.toUpperCase()}
+                 {index + 1}. {point.label} — {point.priority_alert?.toUpperCase() ?? 'UNKNOWN'}
                  </Text>
                  <Text style={styles.priorityReason}>
                  Driver: {point.reason}
@@ -220,6 +213,25 @@ const styles = StyleSheet.create({
     color: '#4B5563',
     fontSize: 15,
     textAlign: 'center',
+  },
+  errorTitle: {
+    marginTop: 14,
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#101828',
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: '#2F6BFF',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 30,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
   },
   overlay: {
     position: 'absolute',

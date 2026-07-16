@@ -11,6 +11,8 @@ import {
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { AGE_MAX, AGE_MIN, getAgeGroup, parseAge } from '@/lib/profile';
+
 export default function ProfileSetupScreen() {
   const [caregiverName, setCaregiverName] = useState('');
   const [caregiverPhone, setCaregiverPhone] = useState('');
@@ -26,17 +28,18 @@ export default function ProfileSetupScreen() {
   const [mosquitoExposure, setMosquitoExposure] = useState(false);
   const [floodExposure, setFloodExposure] = useState(false);
 
-  const getAgeGroup = (age: number) => {
-    if (age < 5) return 'under5';
-    if (age < 12) return 'child';
-    return 'adolescent';
-  };
-
   const saveProfile = async () => {
-    const ageNumber = Number(childAge);
-
-    if (!caregiverName || !childName || !childAge) {
+    if (!caregiverName.trim() || !childName.trim() || !childAge.trim()) {
       alert('Please add caregiver name, child name, and child age.');
+      return;
+    }
+
+    // Number('abc') is NaN, which previously fell through getAgeGroup to
+    // 'adolescent' and risk-scored a toddler as a teenager.
+    const ageNumber = parseAge(childAge);
+
+    if (ageNumber === null) {
+      alert(`Please enter the child's age as a whole number between ${AGE_MIN} and ${AGE_MAX}.`);
       return;
     }
 

@@ -12,6 +12,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
+import {
+  AGE_MAX,
+  AGE_MIN,
+  findSelectedChild,
+  getAgeGroup,
+  loadProfile as loadCaregiverProfile,
+  parseAge,
+} from '@/lib/profile';
+
 export default function EditProfileScreen() {
   const [profile, setProfile] = useState<any>(null);
 
@@ -34,24 +43,24 @@ export default function EditProfileScreen() {
   }, []);
 
   const loadProfile = async () => {
-    const saved = await AsyncStorage.getItem('caregiverProfile');
+    const parsed = await loadCaregiverProfile();
 
-    if (!saved) return;
-
-    const parsed = JSON.parse(saved);
+    if (!parsed) return;
 
     setProfile(parsed);
 
-    const selected = parsed.children.find(
-      (child: any) => child.id === parsed.selectedChildId
-    );
+    // find() returns undefined when selectedChildId does not match any child,
+    // which previously crashed on selected.name below.
+    const selected = findSelectedChild(parsed);
 
-    setCaregiverName(parsed.caregiver.name || '');
-    setCaregiverPhone(parsed.caregiver.phone || '');
-    setCaregiverLocation(parsed.caregiver.location || '');
+    setCaregiverName(parsed.caregiver?.name || '');
+    setCaregiverPhone(parsed.caregiver?.phone || '');
+    setCaregiverLocation(parsed.caregiver?.location || '');
+
+    if (!selected) return;
 
     setChildName(selected.name || '');
-    setChildAge(String(selected.age || ''));
+    setChildAge(String(selected.age ?? ''));
 
     setAsthma(selected.asthma || false);
     setFever(selected.fever || false);
@@ -61,23 +70,31 @@ export default function EditProfileScreen() {
     setFloodExposure(selected.flood_exposure || false);
   };
 
-  const getAgeGroup = (age: number) => {
-    if (age < 5) return 'under5';
-    if (age < 12) return 'child';
-    return 'adolescent';
-  };
-
   const saveChanges = async () => {
     if (!profile) return;
 
+    if (!caregiverName.trim() || !childName.trim()) {
+      alert('Please add both a caregiver name and a child name.');
+      return;
+    }
+
+    const ageNumber = parseAge(childAge);
+
+    if (ageNumber === null) {
+      alert(`Please enter the child's age as a whole number between ${AGE_MIN} and ${AGE_MAX}.`);
+      return;
+    }
+
+    const selected = findSelectedChild(profile);
+
     const updatedChildren = profile.children.map((child: any) => {
-      if (child.id !== profile.selectedChildId) return child;
+      if (child.id !== selected?.id) return child;
 
       return {
         ...child,
         name: childName,
-        age: Number(childAge),
-        age_group: getAgeGroup(Number(childAge)),
+        age: ageNumber,
+        age_group: getAgeGroup(ageNumber),
         asthma,
         fever,
         cough,

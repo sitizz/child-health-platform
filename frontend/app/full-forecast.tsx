@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -7,80 +7,74 @@ import {
   View,
   Pressable,
 } from 'react-native';
-import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-const API_URL = 'https://child-health-platform.onrender.com';
+import { ApiError, fetchEnvironmentRisk } from '@/lib/api';
+import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
+import { riskText } from '@/lib/risk';
 
 export default function FullForecastScreen() {
   const [forecast, setForecast] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchForecast = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const selected = await loadSelectedChild();
+
+      if (!selected) {
+        setError('Please complete the child profile first.');
+        return;
+      }
+
+      const { lat, lon } = await getCurrentCoords();
+      const result = await fetchEnvironmentRisk(selected, lat, lon);
+
+      setForecast(result.forecast ?? []);
+    } catch (err) {
+      console.error('Full forecast error:', err);
+
+      setError(
+        err instanceof ApiError ? err.message : 'Unable to load the forecast.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchForecast();
-  }, []);
-
-  async function fetchForecast() {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-
-      if (status !== 'granted') {
-        alert('Location permission is needed to load forecast.');
-        return;
-      }
-
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const lat = location.coords.latitude;
-      const lon = location.coords.longitude;
-
-      const savedProfile = await AsyncStorage.getItem('caregiverProfile');
-
-      if (!savedProfile) {
-        alert('Please complete child profile first.');
-        return;
-      }
-
-      const parsedProfile = JSON.parse(savedProfile);
-
-      const selected = parsedProfile.children.find(
-        (child: any) => child.id === parsedProfile.selectedChildId
-      );
-
-      if (!selected) {
-        alert('Selected child profile not found.');
-        return;
-      }
-
-      const response = await fetch(
-        `${API_URL}/environment-risk?lat=${lat}&lon=${lon}` +
-          `&age_group=${selected.age_group}` +
-          `&asthma=${selected.asthma}` +
-          `&fever=${selected.fever}` +
-          `&cough=${selected.cough}` +
-          `&dehydration=${selected.dehydration}` +
-          `&mosquito_exposure=${selected.mosquito_exposure}` +
-          `&flood_exposure=${selected.flood_exposure}`
-      );
-
-      const result = await response.json();
-      setForecast(result.forecast || []);
-      } catch (error) {
-        console.error('Full forecast error:', error);
-      } finally {
-        setLoading(false);
-      }
-  }
+  }, [fetchForecast]);
 
   if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
         <Text style={styles.loadingText}>Loading full environmental forecast...</Text>
+      </View>
+    );
+  }
+
+  // Previously an error left `forecast` empty and rendered a bare header with no
+  // explanation of why the page was blank.
+  if (error || !forecast.length) {
+    return (
+      <View style={styles.center}>
+        <Ionicons name="cloud-offline-outline" size={44} color="#94A3B8" />
+        <Text style={styles.errorTitle}>Forecast unavailable</Text>
+        <Text style={styles.loadingText}>{error ?? 'No forecast data was returned.'}</Text>
+
+        <Pressable style={styles.retryButton} onPress={fetchForecast}>
+          <Text style={styles.retryText}>Try Again</Text>
+        </Pressable>
+
+        <Pressable style={styles.backLink} onPress={() => router.back()}>
+          <Text style={styles.backLinkText}>Go Back</Text>
+        </Pressable>
       </View>
     );
   }
@@ -101,8 +95,8 @@ export default function FullForecastScreen() {
 
           <Text style={styles.rain}>{day.rainfall}mm rainfall</Text>
 
-          <Text style={styles.risk}>
-            {day.predicted_risk?.toUpperCase()} RISK
+          <Text style={[styles.risk, { color: riskText(day.predicted_risk) }]}>
+            {day.predicted_risk?.toUpperCase() ?? 'UNKNOWN'} RISK
           </Text>
         </View>
       ))}
@@ -164,10 +158,37 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   risk: {
-    color: '#D97706',
     fontSize: 15,
     fontWeight: '900',
     marginTop: 14,
+  },
+  errorTitle: {
+    marginTop: 14,
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#101828',
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: '#2F6BFF',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 30,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  backLink: {
+    marginTop: 14,
+    paddingVertical: 8,
+  },
+  backLinkText: {
+    color: '#2F6BFF',
+    fontSize: 15,
+    fontWeight: '800',
   },
   backButton: {
     width: 44,

@@ -1,64 +1,49 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, View, Pressable, StyleSheet, ScrollView, Share, SafeAreaView } from 'react-native';
-import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
+import { ApiError, fetchEnvironmentRisk, type ChildProfile, type EnvironmentRisk } from '@/lib/api';
+import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
+import { aqiColour, aqiLevel, elevatedDomains, riskBg, riskRing, riskText } from '@/lib/risk';
+
+const REFRESH_INTERVAL_MS = 300000;
+
 export default function HomeScreen() {
- const [result, setResult] = useState<any>(null);
+ const [result, setResult] = useState<EnvironmentRisk | null>(null);
  const [loading, setLoading] = useState(false);
- const [prevRisk, setPrevRisk] = useState<string | null>(null);
- const [selectedChild, setSelectedChild] = useState<any>(null);
- const [caregiverProfile, setCaregiverProfile] = useState<any>(null);
+ const [error, setError] = useState<string | null>(null);
+ const [isStale, setIsStale] = useState(false);
+ const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+ const [selectedChild, setSelectedChild] = useState<ChildProfile | null>(null);
 
+ // A ref, not state: the polling interval's closure is created once and would
+ // capture a stale `prevRisk` forever, re-firing the high-risk alert every tick.
+ const prevRiskRef = useRef<string | null>(null);
 
- const checkRisk = async (profile = selectedChild) => {
+ const checkRisk = useCallback(async (profile: ChildProfile | null) => {
    try {
      setLoading(true);
+     setError(null);
 
-
-     const { status } = await Location.requestForegroundPermissionsAsync();
-
-
-     if (status !== 'granted') {
-       alert('Location permission is needed to check local environmental risk.');
-       return;
-     }
-
-
-     const location = await Location.getCurrentPositionAsync({
-       accuracy: Location.Accuracy.Balanced,
-     });
-
-
-     const lat = location.coords.latitude;
-     const lon = location.coords.longitude;
-
-
-     const response = await fetch(
-      `https://child-health-platform.onrender.com/environment-risk?lat=${lat}&lon=${lon}&age_group=${profile?.age_group}&asthma=${profile?.asthma}&fever=${profile?.fever}&cough=${profile?.cough}&dehydration=${profile?.dehydration}&mosquito_exposure=${profile?.mosquito_exposure}&flood_exposure=${profile?.flood_exposure}`
-     );
-
-
-     const data = await response.json();
-     console.log('Risk API response:', data);
-
-
-     if (!data.priority_alert || !data.risks) {
-       console.error('Invalid risk API response:', data);
-       alert('Risk check failed. Please complete child profile.');
-       return;
-     }
-
-
-
+     const { lat, lon } = await getCurrentCoords();
+     const data = await fetchEnvironmentRisk(profile, lat, lon);
 
      setResult(data);
-     await AsyncStorage.setItem('lastRiskResult', JSON.stringify(data));
+     setIsStale(false);
 
+     const now = new Date().toISOString();
+     setLastUpdated(now);
+
+     await AsyncStorage.setItem(
+       'lastRiskResult',
+       JSON.stringify({ data, cachedAt: now })
+     );
+
+     const prevRisk = prevRiskRef.current;
 
      if (data.priority_alert === 'high' && prevRisk !== 'high') {
        await Notifications.scheduleNotificationAsync({
@@ -72,7 +57,6 @@ export default function HomeScreen() {
        });
      }
 
-
      if (prevRisk === 'high' && data.priority_alert !== 'high') {
        await Notifications.scheduleNotificationAsync({
          content: {
@@ -84,38 +68,46 @@ export default function HomeScreen() {
        });
      }
 
+     prevRiskRef.current = data.priority_alert;
+   } catch (err) {
+     console.error('Risk check failed:', err);
 
-     setPrevRisk(data.priority_alert);
-   } catch (error) {
-     console.error(error);
-
+     setError(
+       err instanceof ApiError
+         ? err.message
+         : 'Unable to check risk right now. Please try again.'
+     );
 
      const cached = await AsyncStorage.getItem('lastRiskResult');
+
      if (cached) {
-       const cachedData = JSON.parse(cached);
+       try {
+         const parsed = JSON.parse(cached);
 
-
-       setResult(cachedData);
-
-
-       alert('Offline mode: displaying last known environmental risk data.');
+         if (parsed?.data) {
+           setResult(parsed.data);
+           setIsStale(true);
+           setLastUpdated(parsed.cachedAt ?? null);
+         }
+       } catch {
+         // Corrupt cache is not worth surfacing over the live error above.
+       }
      }
    } finally {
      setLoading(false);
    }
- };
+ }, []);
 
 
  const shareAlert = async () => {
  if (!result) return;
-
 
  const message = `
 Child Health Alert
 
 
 Risk Priority: ${result.priority_alert ? result.priority_alert.toUpperCase() : 'UNKNOWN'}
-
+${isStale ? `\nNOTE: Offline data, last updated ${formatUpdated(lastUpdated)}.\n` : ''}
 
 Recommended Action:
 ${result.action}
@@ -131,46 +123,26 @@ PM10: ${result.environment.pm10} µg/m³
 
 
 Child Vulnerability:
-${result.child_vulnerability.level.toUpperCase()}
+${result.child_vulnerability?.level?.toUpperCase() ?? 'UNKNOWN'}
 
 
-Generated by Child Guard.
+Generated by Child Guard. Environmental guidance only — not medical advice.
 `;
 
-
- await Share.share({
-   message,
- });
+ await Share.share({ message });
 };
 
 
 useFocusEffect(
  useCallback(() => {
-   const refreshSelectedChild = async () => {
-     const savedProfile = await AsyncStorage.getItem('caregiverProfile');
-
-
-     if (!savedProfile) return;
-
-
-     const parsedProfile = JSON.parse(savedProfile);
-
-
-     const selected = parsedProfile.children.find(
-       (child: any) => child.id === parsedProfile.selectedChildId
-     );
-
-
-     setSelectedChild(selected);
-   };
-
-
-   refreshSelectedChild();
+   loadSelectedChild().then(setSelectedChild);
  }, [])
 );
 
 
 useEffect(() => {
+ let cancelled = false;
+
  const initialiseApp = async () => {
    const authSession = await AsyncStorage.getItem('authSession');
 
@@ -186,80 +158,45 @@ useEffect(() => {
      return;
    }
 
-   const savedProfile = await AsyncStorage.getItem('caregiverProfile');
+   const selected = await loadSelectedChild();
 
-   if (!savedProfile) {
+   if (!selected) {
      router.replace('/profile-setup');
      return;
    }
 
-
-   const parsedProfile = JSON.parse(savedProfile);
-
-
-   const selected = parsedProfile.children.find(
-     (child: any) => child.id === parsedProfile.selectedChildId
-   );
-
+   if (cancelled) return;
 
    setSelectedChild(selected);
 
-
    await Notifications.requestPermissionsAsync();
-
 
    checkRisk(selected);
  };
 
-
  initialiseApp();
 
-
  const interval = setInterval(async () => {
-   const savedProfile = await AsyncStorage.getItem('caregiverProfile');
+   const selected = await loadSelectedChild();
 
+   if (!cancelled && selected) checkRisk(selected);
+ }, REFRESH_INTERVAL_MS);
 
-   if (savedProfile) {
-     const parsedProfile = JSON.parse(savedProfile);
-     setCaregiverProfile(parsedProfile);
-
-
-     const selected = parsedProfile.children.find(
-       (child: any) => child.id === parsedProfile.selectedChildId
-     );
-
-
-     checkRisk(selected);
-   }
- }, 300000);
-
-
- return () => clearInterval(interval);
-}, []);
-
-
- const riskColour = (risk: string) => {
-   if (risk === 'high') return '#FEE2E2';
-   if (risk === 'moderate') return '#FEF3C7';
-   return '#DCFCE7';
+ return () => {
+   cancelled = true;
+   clearInterval(interval);
  };
+}, [checkRisk]);
 
 
- const riskTextColour = (risk: string) => {
-   if (risk === 'high') return '#B91C1C';
-   if (risk === 'moderate') return '#92400E';
-   return '#166534';
+ const formatUpdated = (iso: string | null) => {
+   if (!iso) return 'Not yet';
+
+   return new Date(iso).toLocaleTimeString([], {
+     hour: '2-digit',
+     minute: '2-digit',
+   });
  };
-
-const getAqiLevel = (aqi: number) => {
-  if (!aqi) return 'checking';
-  if (aqi <= 50) return 'good';
-  if (aqi <= 100) return 'moderate';
-  if (aqi <= 150) return 'unhealthy for sensitive groups';
-  if (aqi <= 200) return 'unhealthy';
-  if (aqi <= 300) return 'very unhealthy';
-  return 'hazardous';
-};
 
  return (
   <SafeAreaView style={styles.safe}>
@@ -293,12 +230,17 @@ const getAqiLevel = (aqi: number) => {
               <MaterialCommunityIcons name="dots-circle" size={22} color="#2F6BFF" />
             </View>
 
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.statusMain}>
                 AQI {result?.environment?.aqi ?? '--'}
               </Text>
-              <Text style={styles.goodText}>
-                {getAqiLevel(result?.environment?.aqi).toUpperCase()}
+              <Text
+                style={[
+                  styles.aqiText,
+                  { color: aqiColour(result?.environment?.aqi) },
+                ]}
+              >
+                {aqiLevel(result?.environment?.aqi).toUpperCase()}
               </Text>
             </View>
           </View>
@@ -311,11 +253,29 @@ const getAqiLevel = (aqi: number) => {
             </View>
 
             <View>
-              <Text style={styles.statusMain}>{loading ? 'Checking' : 'Live'}</Text>
-              <Text style={styles.statusSub}>Updated</Text>
+              <Text style={styles.statusMain}>
+                {loading ? 'Checking' : isStale ? 'Offline' : 'Live'}
+              </Text>
+              <Text style={styles.statusSub}>{formatUpdated(lastUpdated)}</Text>
             </View>
           </View>
         </View>
+
+      {error && (
+        <View style={styles.errorBanner}>
+          <Ionicons name="warning-outline" size={20} color="#B91C1C" />
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+
+      {isStale && result && (
+        <View style={styles.staleBanner}>
+          <Ionicons name="cloud-offline-outline" size={20} color="#92400E" />
+          <Text style={styles.staleText}>
+            Showing last known data from {formatUpdated(lastUpdated)}. Conditions may have changed.
+          </Text>
+        </View>
+      )}
 
       {selectedChild && (
         <View style={styles.childCard}>
@@ -367,38 +327,43 @@ const getAqiLevel = (aqi: number) => {
           <View
             style={[
               styles.riskHero,
-              { backgroundColor: riskColour(result.priority_alert) },
+              { backgroundColor: riskBg(result.priority_alert) },
             ]}
           >
             <View style={{ flex: 1 }}>
-              <Text style={styles.riskLabel}>Environmental Risk Index</Text>
+              <Text style={styles.riskLabel}>Environmental Risk</Text>
               <Text
                 style={[
                   styles.riskLevel,
-                  { color: riskTextColour(result.priority_alert) },
+                  { color: riskText(result.priority_alert) },
                 ]}
               >
                 {result.priority_alert ? result.priority_alert.toUpperCase() : 'UNKNOWN'}
               </Text>
-              <Text style={styles.riskDescription}>
-                Stable environmental conditions detected for this time.
-              </Text>
+              <Text style={styles.riskDescription}>{result.action}</Text>
             </View>
 
-            <View style={styles.riskRing}>
+            <View
+              style={[
+                styles.riskRing,
+                {
+                  borderColor: riskRing(result.priority_alert).border,
+                  backgroundColor: riskRing(result.priority_alert).fill,
+                },
+              ]}
+            >
               <Text
                 style={[
                   styles.riskNumber,
-                  { color: riskTextColour(result.priority_alert) },
+                  { color: riskText(result.priority_alert) },
                 ]}
               >
-                {result.priority_alert === 'high'
-                  ? '82'
-                  : result.priority_alert === 'moderate'
-                  ? '56'
-                  : '23'}
+                {elevatedDomains(result.risks).elevated}
+                <Text style={styles.riskOutOf}>
+                  /{elevatedDomains(result.risks).total}
+                </Text>
               </Text>
-              <Text style={styles.riskOutOf}>/100</Text>
+              <Text style={styles.riskOutOf}>elevated</Text>
             </View>
           </View>
 
@@ -435,15 +400,15 @@ const getAqiLevel = (aqi: number) => {
               <Text
                 style={[
                   styles.vulnerabilityLevel,
-                  { color: riskTextColour(result.child_vulnerability.level) },
+                  { color: riskText(result.child_vulnerability?.level) },
                 ]}
               >
-                {result.child_vulnerability.level.toUpperCase()}
+                {result.child_vulnerability?.level?.toUpperCase() ?? 'UNKNOWN'}
               </Text>
             </View>
 
             <View style={{ flex: 1 }}>
-              {result.child_vulnerability.reasons.length > 0 ? (
+              {result.child_vulnerability?.reasons?.length ? (
                 result.child_vulnerability.reasons.map((reason: string, index: number) => (
                   <Text key={index} style={styles.vulnerabilityReason}>
                     • {reason}
@@ -501,11 +466,8 @@ const getAqiLevel = (aqi: number) => {
 }
 
 function RiskCard({ title, value, icon }: any) {
-  const colour =
-    value === 'high' ? '#B91C1C' : value === 'moderate' ? '#D97706' : '#166534';
-
-  const bgColour =
-    value === 'high' ? '#FEE2E2' : value === 'moderate' ? '#FEF3C7' : '#DCFCE7';
+  const colour = riskText(value);
+  const bgColour = riskBg(value);
 
   return (
     <View style={styles.riskCard}>
@@ -515,7 +477,7 @@ function RiskCard({ title, value, icon }: any) {
 
       <Text style={styles.riskTitle}>{title}</Text>
       <Text style={[styles.riskValue, { color: colour }]}>
-        {value.toUpperCase()}
+        {value?.toUpperCase() ?? 'UNKNOWN'}
       </Text>
       <Text style={styles.domainScore}>Risk domain</Text>
 
@@ -646,11 +608,46 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
-  goodText: {
-    color: '#18A66A',
+  aqiText: {
     fontSize: 12,
     fontWeight: '800',
     marginTop: 2,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  errorText: {
+    flex: 1,
+    color: '#B91C1C',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  staleBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  staleText: {
+    flex: 1,
+    color: '#92400E',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
   },
   childCard: {
     backgroundColor: '#FFFFFF',
