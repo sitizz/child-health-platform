@@ -4,14 +4,18 @@ Production-oriented FastAPI backend for environmental child-health risk guidance
 
 ## Quick start
 
+Requires **Python 3.12** (pinned in `.python-version` for Render; 3.14 breaks `pydantic-core` wheels).
+
 ```bash
 cd backend
-python -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 cp .env.example .env
 uvicorn main:app --reload --port 8000
 ```
+
+On Render, set Root Directory to `backend`, or set env `PYTHON_VERSION=3.12.11`.
 
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
