@@ -9,12 +9,14 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError, fetchEnvironmentRisk } from '@/lib/api';
 import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
 import { riskText } from '@/lib/risk';
 
 export default function FullForecastScreen() {
+  const insets = useSafeAreaInsets();
   const [forecast, setForecast] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +82,13 @@ export default function FullForecastScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 100 },
+      ]}
+    >
       <Pressable style={styles.backButton} onPress={() => router.back()}>
         <Ionicons name="chevron-back" size={28} color="#101828" />
      </Pressable>
@@ -111,8 +119,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 24,
-    paddingTop: 70,
-    paddingBottom: 120,
   },
   center: {
     flex: 1,

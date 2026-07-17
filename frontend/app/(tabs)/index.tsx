@@ -1,13 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Text, View, Pressable, StyleSheet, ScrollView, Share, SafeAreaView } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import { useCallback, useEffect, useState } from 'react';
+import { Text, View, Pressable, StyleSheet, ScrollView, Share } from 'react-native';
+// react-native's own SafeAreaView is iOS-only and renders as a plain View on
+// Android, leaving content under the status bar / camera cutout.
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { ApiError, fetchEnvironmentRisk, type ChildProfile, type EnvironmentRisk } from '@/lib/api';
-import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
+import { type ChildProfile, type EnvironmentRisk } from '@/lib/api';
+import { registerBackgroundRiskCheck } from '@/lib/background';
+import { ensureNotificationPermission, scheduleDailyRiskReminder } from '@/lib/notifications';
+import { loadSelectedChild } from '@/lib/profile';
+import { runRiskCheck } from '@/lib/risk-check';
 import { aqiColour, aqiLevel, elevatedDomains, riskBg, riskRing, riskText } from '@/lib/risk';
 
 const REFRESH_INTERVAL_MS = 300000;
@@ -20,82 +25,19 @@ export default function HomeScreen() {
  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
  const [selectedChild, setSelectedChild] = useState<ChildProfile | null>(null);
 
- // A ref, not state: the polling interval's closure is created once and would
- // capture a stale `prevRisk` forever, re-firing the high-risk alert every tick.
- const prevRiskRef = useRef<string | null>(null);
+ // Delegates to the same engine the background task uses, so the alert rules
+ // cannot drift between foreground and background. Previous risk is persisted
+ // inside runRiskCheck rather than held here, so transitions survive restarts.
+ const checkRisk = useCallback(async () => {
+   setLoading(true);
 
- const checkRisk = useCallback(async (profile: ChildProfile | null) => {
-   try {
-     setLoading(true);
-     setError(null);
+   const outcome = await runRiskCheck();
 
-     const { lat, lon } = await getCurrentCoords();
-     const data = await fetchEnvironmentRisk(profile, lat, lon);
-
-     setResult(data);
-     setIsStale(false);
-
-     const now = new Date().toISOString();
-     setLastUpdated(now);
-
-     await AsyncStorage.setItem(
-       'lastRiskResult',
-       JSON.stringify({ data, cachedAt: now })
-     );
-
-     const prevRisk = prevRiskRef.current;
-
-     if (data.priority_alert === 'high' && prevRisk !== 'high') {
-       await Notifications.scheduleNotificationAsync({
-         content: {
-           title: '🚨 High Risk Alert',
-           body: data.action,
-           sound: true,
-           priority: Notifications.AndroidNotificationPriority.HIGH,
-         },
-         trigger: null,
-       });
-     }
-
-     if (prevRisk === 'high' && data.priority_alert !== 'high') {
-       await Notifications.scheduleNotificationAsync({
-         content: {
-           title: '✅ Risk Improved',
-           body: 'Risk levels have improved. Situation is safer now.',
-           sound: true,
-         },
-         trigger: null,
-       });
-     }
-
-     prevRiskRef.current = data.priority_alert;
-   } catch (err) {
-     console.error('Risk check failed:', err);
-
-     setError(
-       err instanceof ApiError
-         ? err.message
-         : 'Unable to check risk right now. Please try again.'
-     );
-
-     const cached = await AsyncStorage.getItem('lastRiskResult');
-
-     if (cached) {
-       try {
-         const parsed = JSON.parse(cached);
-
-         if (parsed?.data) {
-           setResult(parsed.data);
-           setIsStale(true);
-           setLastUpdated(parsed.cachedAt ?? null);
-         }
-       } catch {
-         // Corrupt cache is not worth surfacing over the live error above.
-       }
-     }
-   } finally {
-     setLoading(false);
-   }
+   setResult(outcome.data);
+   setError(outcome.error);
+   setIsStale(outcome.stale);
+   setLastUpdated(outcome.updatedAt);
+   setLoading(false);
  }, []);
 
 
@@ -169,17 +111,32 @@ useEffect(() => {
 
    setSelectedChild(selected);
 
-   await Notifications.requestPermissionsAsync();
+   // Alerting is a bonus on top of the on-screen reading: a refusal, an
+   // unsupported platform, or a scheduling failure must never stop the risk
+   // check from running and rendering.
+   try {
+     // Android 13+ requires POST_NOTIFICATIONS at runtime.
+     const canNotify = await ensureNotificationPermission();
 
-   checkRisk(selected);
+     // Both are pointless without permission, and registering a background task
+     // that can only produce suppressed notifications just wastes wakeups.
+     if (canNotify) {
+       await scheduleDailyRiskReminder(selected.name);
+       await registerBackgroundRiskCheck();
+     }
+   } catch (err) {
+     console.warn('Notification setup skipped:', err);
+   }
+
+   checkRisk();
  };
 
  initialiseApp();
 
- const interval = setInterval(async () => {
-   const selected = await loadSelectedChild();
-
-   if (!cancelled && selected) checkRisk(selected);
+ // Only covers the app being open; the background task carries the same check
+ // while it is closed.
+ const interval = setInterval(() => {
+   if (!cancelled) checkRisk();
  }, REFRESH_INTERVAL_MS);
 
  return () => {
@@ -199,7 +156,7 @@ useEffect(() => {
  };
 
  return (
-  <SafeAreaView style={styles.safe}>
+  <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.container}
@@ -314,7 +271,7 @@ useEffect(() => {
             return;
           }
 
-          checkRisk(selectedChild);
+          checkRisk();
         }}
       >
         <Text style={styles.checkButtonText}>

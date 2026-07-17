@@ -11,6 +11,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   AGE_MAX,
@@ -22,6 +23,7 @@ import {
 } from '@/lib/profile';
 
 export default function EditProfileScreen() {
+  const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<any>(null);
 
   const [caregiverName, setCaregiverName] = useState('');
@@ -123,7 +125,13 @@ export default function EditProfileScreen() {
   };
 
   return (
-  <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+  <ScrollView
+    style={styles.screen}
+    contentContainerStyle={[
+      styles.container,
+      { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 100 },
+    ]}
+  >
     <View style={styles.header}>
       <Pressable style={styles.backButton} onPress={() => router.back()}>
         <Ionicons name="chevron-back" size={26} color="#101828" />
@@ -275,8 +283,6 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 120,
   },
   header: {
     marginBottom: 24,

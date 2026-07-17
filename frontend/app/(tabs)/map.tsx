@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError, fetchEnvironmentRisk } from '@/lib/api';
 import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
 
 export default function RegionalRiskMapScreen() {
+  const insets = useSafeAreaInsets();
   const [region, setRegion] = useState<any>(null);
   const [points, setPoints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,7 +163,7 @@ export default function RegionalRiskMapScreen() {
         ))}
       </MapView>
 
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { top: insets.top + 12 }]}>
         <Text style={styles.title}>Regional Risk Map</Text>
         <Text style={styles.subtitle}>
           Live location-based climate-health risk intelligence
@@ -235,7 +237,6 @@ const styles = StyleSheet.create({
   },
   overlay: {
     position: 'absolute',
-    top: 70,
     left: 18,
     right: 18,
     backgroundColor: 'white',

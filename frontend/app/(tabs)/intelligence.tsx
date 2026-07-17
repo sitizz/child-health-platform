@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View,  Pressable } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import { ApiError, fetchEnvironmentRisk, type EnvironmentRisk } from '@/lib/api';
@@ -8,6 +9,7 @@ import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
 import { riskBg, riskText } from '@/lib/risk';
 
 export default function RiskIntelligenceScreen() {
+  const insets = useSafeAreaInsets();
   const [data, setData] = useState<EnvironmentRisk | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +72,13 @@ export default function RiskIntelligenceScreen() {
   }
 
  return (
-  <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+  <ScrollView
+    style={styles.container}
+    contentContainerStyle={[
+      styles.content,
+      { paddingTop: insets.top + 22, paddingBottom: insets.bottom + 100 },
+    ]}
+  >
     <View style={styles.headerBlock}>
       <View style={styles.liveRow}>
         <View style={styles.liveDot} />
@@ -268,8 +276,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 72,
-    paddingBottom: 120,
   },
   center: {
     flex: 1,

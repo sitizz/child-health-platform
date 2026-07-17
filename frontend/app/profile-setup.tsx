@@ -10,10 +10,12 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AGE_MAX, AGE_MIN, getAgeGroup, parseAge } from '@/lib/profile';
 
 export default function ProfileSetupScreen() {
+  const insets = useSafeAreaInsets();
   const [caregiverName, setCaregiverName] = useState('');
   const [caregiverPhone, setCaregiverPhone] = useState('');
   const [caregiverLocation, setCaregiverLocation] = useState('');
@@ -75,7 +77,12 @@ export default function ProfileSetupScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={[
+        styles.container,
+        { paddingTop: insets.top + 30, paddingBottom: insets.bottom + 40 },
+      ]}
+    >
       <Text style={styles.badge}>Profile Setup</Text>
 
       <Text style={styles.title}>Create Caregiver & Child Profile</Text>
@@ -159,7 +166,6 @@ function ProfileRow({ label, value, onValueChange }: any) {
 const styles = StyleSheet.create({
   container: {
     padding: 24,
-    paddingTop: 80,
     backgroundColor: '#F8FAFC',
     minHeight: '100%',
   },

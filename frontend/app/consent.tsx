@@ -10,8 +10,10 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ConsentScreen() {
+  const insets = useSafeAreaInsets();
   const [accepted, setAccepted] = useState(false);
 
   const continueToProfile = async () => {
@@ -40,7 +42,13 @@ export default function ConsentScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[
+        styles.container,
+        { paddingTop: insets.top + 28, paddingBottom: insets.bottom + 40 },
+      ]}
+    >
       <View style={styles.iconCircle}>
         <Ionicons name="document-text-outline" size={38} color="#2F6BFF" />
       </View>
@@ -118,8 +126,6 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: 24,
-    paddingTop: 78,
-    paddingBottom: 120,
   },
   iconCircle: {
     width: 76,

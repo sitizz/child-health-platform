@@ -1,10 +1,17 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { ErrorBoundary } from '@/components/error-boundary';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+// Imported for its side effect: defines the background risk task. This must run
+// on every launch, including headless background launches where no screen ever
+// mounts, so it is anchored in the root layout rather than in a tab screen.
+import '@/lib/background';
+// Importing this module installs the foreground notification handler.
+import { registerNotificationChannel } from '@/lib/notifications';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -12,6 +19,10 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  useEffect(() => {
+    registerNotificationChannel();
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

@@ -1,10 +1,15 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
+const TAB_BAR_CONTENT_HEIGHT = 60;
+
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -13,9 +18,11 @@ export default function TabLayout() {
         tabBarInactiveTintColor: '#94A3B8',
         tabBarButton: HapticTab,
         tabBarStyle: {
-          height: 84,
+          // Fixed height/padding collided with the home indicator on gesture-nav
+          // devices and left dead space on devices without one.
+          height: TAB_BAR_CONTENT_HEIGHT + insets.bottom,
           paddingTop: 10,
-          paddingBottom: 18,
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
           backgroundColor: '#FFFFFF',
           borderTopWidth: 1,
           borderTopColor: '#E6EBF2',

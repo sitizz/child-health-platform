@@ -39,7 +39,21 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2F6BFF"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Child Guard uses your location to check local weather and air quality so it can assess environmental health risk for your child."
+        }
+      ],
+      "expo-dev-client",
+      "expo-background-task"
     ],
     "experiments": {
       "typedRoutes": true,

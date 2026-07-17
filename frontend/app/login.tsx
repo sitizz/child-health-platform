@@ -11,8 +11,10 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -80,7 +82,7 @@ export default function LoginScreen() {
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + 40 }]}>
         <View style={styles.logoCircle}>
           <Ionicons name="shield-checkmark-outline" size={42} color="#2F6BFF" />
         </View>
@@ -142,7 +144,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 24,
-    paddingTop: 90,
   },
   logoCircle: {
     width: 82,
