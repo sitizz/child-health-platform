@@ -4,7 +4,7 @@ import MapView, { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ApiError, fetchEnvironmentRisk } from '@/lib/api';
+import { ApiError, fetchEnvironmentRiskBatch, type BatchPoint } from '@/lib/api';
 import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
 
 export default function RegionalRiskMapScreen() {
@@ -35,20 +35,28 @@ export default function RegionalRiskMapScreen() {
         longitudeDelta: 0.12,
       });
 
-      const samplePoints = [
-        { label: 'Current area', lat, lon },
-        { label: 'North zone', lat: lat + 0.05, lon },
-        { label: 'South zone', lat: lat - 0.05, lon },
-        { label: 'East zone', lat, lon: lon + 0.05 },
-        { label: 'West zone', lat, lon: lon - 0.05 },
+      const samplePoints: (BatchPoint & { label: string })[] = [
+        { id: 'current', label: 'Current area', lat, lon },
+        { id: 'north', label: 'North zone', lat: lat + 0.05, lon },
+        { id: 'south', label: 'South zone', lat: lat - 0.05, lon },
+        { id: 'east', label: 'East zone', lat, lon: lon + 0.05 },
+        { id: 'west', label: 'West zone', lat, lon: lon - 0.05 },
       ];
 
-      const results = await Promise.allSettled(
-        samplePoints.map(async (point) => {
-          const data = await fetchEnvironmentRisk(selected, point.lat, point.lon);
-          const reasons = data.risk_reasons || {};
+      // One batch request instead of five parallel GETs — the previous approach
+      // was the main driver of upstream rate-limiting.
+      const results = await fetchEnvironmentRiskBatch(selected, samplePoints);
+      const byId = new Map(results.map((item) => [item.id, item]));
 
-          return {
+      const successfulResults = samplePoints.flatMap((point) => {
+        const data = byId.get(point.id)?.result;
+
+        if (!data) return [];
+
+        const reasons = data.risk_reasons || {};
+
+        return [
+          {
             ...point,
             priority_alert: data.priority_alert,
             top_threat: getTopThreat(data.risks),
@@ -59,24 +67,17 @@ export default function RegionalRiskMapScreen() {
               reasons.flood?.[0] ||
               'No major risk driver detected',
             action: data.action,
-          };
-        })
-      );
-
-      const successfulResults = results
-        .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled')
-        .map((result) => result.value);
+          },
+        ];
+      });
 
       // Every zone failing means the service is unreachable, not that the area
       // is risk-free. Showing an empty map would imply the latter.
       if (!successfulResults.length) {
-        const firstRejection = results.find(
-          (r): r is PromiseRejectedResult => r.status === 'rejected'
+        throw new ApiError(
+          503,
+          'Environmental data is temporarily unavailable. Please try again shortly.'
         );
-
-        throw firstRejection?.reason instanceof ApiError
-          ? firstRejection.reason
-          : new ApiError(0, 'Unable to load regional risk map.');
       }
 
       setPoints(successfulResults);

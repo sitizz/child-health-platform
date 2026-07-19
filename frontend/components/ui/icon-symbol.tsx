@@ -15,6 +15,8 @@ type IconSymbolName = keyof typeof MAPPING;
  */
 const MAPPING = {
   'house.fill': 'home',
+  'location.fill': 'location-on',
+  'sparkles': 'auto-awesome',
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
@@ -37,5 +39,9 @@ export function IconSymbol({
   style?: StyleProp<TextStyle>;
   weight?: SymbolWeight;
 }) {
-  return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
+  // Fall back to a visible glyph so an unmapped name can never render as a blank
+  // space (the cast on MAPPING hides missing entries from the type checker).
+  const materialName = MAPPING[name] ?? 'help-outline';
+
+  return <MaterialIcons color={color} size={size} name={materialName} style={style} />;
 }
