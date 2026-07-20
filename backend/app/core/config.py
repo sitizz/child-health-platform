@@ -17,28 +17,44 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     log_level: str = "INFO"
 
-    # NoDecode: allow comma-separated env values like "*" or "http://a,http://b"
-    # instead of requiring JSON lists.
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["*"]
     )
     api_key: str | None = None
     rate_limit: str = "60/minute"
 
-    cache_ttl_seconds: int = 300
-    redis_url: str | None = None
+    database_url: str = (
+        "postgresql+asyncpg://childguard:childguard@localhost:5432/childguard"
+    )
+    redis_url: str | None = "redis://localhost:6379/0"
 
+    jwt_secret: str = "dev-only-change-me-use-openssl-rand-hex-32"
+    jwt_algorithm: str = "HS256"
+    jwt_access_ttl_min: int = 60
+    jwt_refresh_ttl_days: int = 7
+
+    cache_ttl_seconds: int = 300
     open_meteo_timeout_seconds: float = 5.0
     open_meteo_forecast_url: str = "https://api.open-meteo.com/v1/forecast"
     open_meteo_air_url: str = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
     enable_docs: bool | None = None
-    model_version: str = "env-risk-heuristic-v1"
+    model_version: str = "env-risk-heuristic-v2"
     disclaimer: str = (
-        "Child Guard provides environmental risk guidance based on weather, "
-        "air quality, rainfall, and child profile information. It does not "
-        "diagnose, treat, or replace medical advice."
+        "Child Guard Health provides environmental health guidance and is not "
+        "intended to diagnose, treat, or replace professional medical advice. "
+        "Users should seek advice from qualified healthcare professionals for "
+        "medical concerns."
     )
+    disclaimer_version: str = "disclaimer-v1"
+    consent_version: str = "consent-v1"
+    privacy_policy_url: str = "https://child-health-platform.onrender.com/privacy"
+    terms_url: str = "https://child-health-platform.onrender.com/terms"
+
+    expo_access_token: str | None = None
+    expo_push_url: str = "https://exp.host/--/api/v2/push/send"
+    notification_cooldown_minutes: int = 180
+    max_children_per_caregiver: int = 10
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -48,9 +64,9 @@ class Settings(BaseSettings):
             return items or ["*"]
         return value
 
-    @field_validator("api_key", mode="before")
+    @field_validator("api_key", "expo_access_token", "redis_url", mode="before")
     @classmethod
-    def empty_api_key_as_none(cls, value: object) -> object:
+    def empty_str_as_none(cls, value: object) -> object:
         if value == "":
             return None
         return value
