@@ -88,7 +88,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=cors_origins,
         allow_credentials=allow_credentials,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID"],
     )
 
@@ -108,29 +108,33 @@ def create_app() -> FastAPI:
             description=app.description,
             routes=app.routes,
             tags=[
-                {
-                    "name": "Health",
-                    "description": "Liveness, readiness, and service status",
-                },
-                {
-                    "name": "Environment Risk",
-                    "description": "Versioned environmental risk evaluation APIs",
-                },
-                {
-                    "name": "Legacy",
-                    "description": "Deprecated unversioned routes kept for mobile compatibility",
-                },
+                {"name": "Health", "description": "Liveness and readiness"},
+                {"name": "Auth", "description": "Caregiver registration and JWT"},
+                {"name": "Consent", "description": "Informed consent management"},
+                {"name": "Disclaimer", "description": "Medical disclaimer acknowledgements"},
+                {"name": "Children", "description": "Multi-child profiles (max 10)"},
+                {"name": "Recommendations", "description": "Explainable AI recommendations"},
+                {"name": "ParentPanel", "description": "Household overview and history"},
+                {"name": "Devices", "description": "Expo push token registry"},
+                {"name": "Notifications", "description": "Push dispatch and tests"},
+                {"name": "Environment Risk", "description": "Environmental risk scoring"},
+                {"name": "Legacy", "description": "Deprecated unversioned routes"},
             ],
         )
-        schema.setdefault("components", {}).setdefault("securitySchemes", {})[
-            "ApiKeyAuth"
-        ] = {
+        components = schema.setdefault("components", {}).setdefault("securitySchemes", {})
+        components["ApiKeyAuth"] = {
             "type": "apiKey",
             "in": "header",
             "name": "X-API-Key",
-            "description": "API key required when server API_KEY is set or APP_ENV=production",
+            "description": "Service API key when configured",
         }
-        schema["security"] = [{"ApiKeyAuth": []}]
+        components["BearerAuth"] = {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Caregiver access token from /api/v1/auth/login",
+        }
+        schema["security"] = [{"ApiKeyAuth": []}, {"BearerAuth": []}]
         app.openapi_schema = schema
         return app.openapi_schema
 
