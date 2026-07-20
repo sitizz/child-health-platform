@@ -8,6 +8,7 @@ import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
+import { DisclaimerBanner } from '@/components/disclaimer-banner';
 import { applyAlertPreference } from '@/lib/alerts';
 import { type ChildProfile, type EnvironmentRisk } from '@/lib/api';
 import { CONSENT_VERSION, hasPersonalisedAccess, loadConsent } from '@/lib/consent';
@@ -239,6 +240,8 @@ useEffect(() => {
 
         </View>
 
+      <DisclaimerBanner style={styles.disclaimer} />
+
       {accessLimited ? (
         <View style={styles.limitedCard}>
           <View style={styles.limitedIcon}>
@@ -317,28 +320,38 @@ useEffect(() => {
       {selectedChild && (
         <View style={styles.childCard}>
           <View style={styles.avatarCircle}>
-            <Ionicons name="person" size={40} color="#2F6B9A" />
+            <Ionicons name="person" size={30} color="#2F6B9A" />
           </View>
 
           <View style={styles.childInfo}>
-            <Text style={styles.childName}>
-              {selectedChild.name} · {selectedChild.age} years old
+            <Text
+              style={styles.childName}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              ellipsizeMode="tail"
+            >
+              {selectedChild.name}
+            </Text>
+
+            <Text style={styles.childAge} numberOfLines={1}>
+              {selectedChild.age} {selectedChild.age === 1 ? 'year' : 'years'} old
             </Text>
 
             <View style={styles.monitorRow}>
               <View style={styles.smallGreenDot} />
               <Text style={styles.monitorText}>Monitoring active</Text>
             </View>
-
-            <Text style={styles.statusSub}>Child profile connected</Text>
           </View>
 
           <Pressable
             style={styles.editButton}
             onPress={() => router.push('/edit-profile')}
+            accessibilityRole="button"
+            accessibilityLabel="Edit child profile"
           >
-            <Ionicons name="person-outline" size={17} color="#2F6BFF" />
-            <Text style={styles.editText}>Edit Profile</Text>
+            <Ionicons name="create-outline" size={18} color="#2F6BFF" />
+            <Text style={styles.editText}>Edit</Text>
           </Pressable>
         </View>
       )}
@@ -552,6 +565,9 @@ const styles = StyleSheet.create({
   header: {
     position: 'relative',
     marginBottom: 20,
+  },
+  disclaimer: {
+    marginBottom: 18,
   },
   liveRow: {
     flexDirection: 'row',
@@ -771,20 +787,30 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   avatarCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#DCEEFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   childInfo: {
     flex: 1,
+    // minWidth:0 lets the flex child shrink so the single-line name can scale /
+    // ellipsize instead of forcing the row wider (also required on web).
+    minWidth: 0,
   },
   childName: {
     color: '#101828',
-    fontSize: 21,
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: '900',
+  },
+  childAge: {
+    color: '#667085',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 1,
   },
   monitorRow: {
     flexDirection: 'row',
@@ -811,6 +837,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    // Keep its intrinsic width so it never squeezes the name column.
+    flexShrink: 0,
   },
   editText: {
     color: '#2F6BFF',

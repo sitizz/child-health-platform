@@ -11,6 +11,8 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+
+import { DisclaimerBanner } from '@/components/disclaimer-banner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
@@ -128,9 +130,7 @@ export default function LoginScreen() {
           </Pressable>
         </View>
 
-        <Text style={styles.footerText}>
-          This platform provides environmental risk guidance only and does not replace medical advice.
-        </Text>
+        <DisclaimerBanner style={styles.disclaimer} />
       </View>
     </KeyboardAvoidingView>
   );
@@ -221,11 +221,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 18,
   },
-  footerText: {
-    color: '#667085',
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: 'center',
+  disclaimer: {
     marginTop: 24,
   },
 });

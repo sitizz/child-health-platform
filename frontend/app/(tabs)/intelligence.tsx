@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View,  Pressable } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DisclaimerBanner } from '@/components/disclaimer-banner';
 import { ApiError, fetchEnvironmentRisk, type EnvironmentRisk } from '@/lib/api';
 import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
 import { riskBg, riskText } from '@/lib/risk';
@@ -71,185 +72,177 @@ export default function RiskIntelligenceScreen() {
     );
   }
 
- return (
-  <ScrollView
-    style={styles.container}
-    contentContainerStyle={[
-      styles.content,
-      { paddingTop: insets.top + 22, paddingBottom: insets.bottom + 100 },
-    ]}
-  >
-    <View style={styles.headerBlock}>
-      <View style={styles.liveRow}>
-        <View style={styles.liveDot} />
-        <Text style={styles.liveText}>AI-POWERED ANALYSIS</Text>
-      </View>
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + 22, paddingBottom: insets.bottom + 100 },
+      ]}
+    >
+      <View style={styles.headerBlock}>
+        <View style={styles.liveRow}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>AI-POWERED ANALYSIS</Text>
+        </View>
 
-      <Text style={styles.header}>Risk Intelligence</Text>
+        <Text style={styles.header}>Risk Intelligence</Text>
 
-      <Text style={styles.subheader}>
-        Environmental health risk analysis for vulnerable children
-      </Text>
-    </View>
-
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Risk Domains</Text>
-
-      <View style={styles.domainGrid}>
-        <RiskCard
-          title="Heat Stress"
-          value={data.predictive_domains.heat_stress}
-          icon="thermometer"
-        />
-
-        <RiskCard
-          title="Respiratory Burden"
-          value={data.predictive_domains.respiratory}
-          icon="lungs"
-        />
-
-        <RiskCard
-          title="Dengue Watch"
-          value={data.predictive_domains.dengue}
-          icon="bug-outline"
-        />
-
-        <RiskCard
-          title="Flood Risk"
-          value={data.risks.flood}
-          icon="waves-arrow-up"
-        />
-      </View>
-    </View>
-
-    <View style={styles.outlookPanel}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.panelTitle}>72-Hour Outlook</Text>
-        <Text style={styles.largeValue}>
-          {data.trend?.direction?.toUpperCase() ?? 'UNKNOWN'}
+        <Text style={styles.subheader}>
+          Environmental health risk analysis for vulnerable children
         </Text>
-        <Text style={styles.bodyText}>{data.trend?.message}</Text>
       </View>
 
-      <View
-        style={[
-          styles.gauge,
-          {
-            borderColor: riskBg(data.priority_alert),
-            backgroundColor: '#F8FAFC',
-          },
-        ]}
-      >
-        <Text style={[styles.gaugeValue, { color: riskText(data.priority_alert) }]}>
-          {data.priority_alert?.toUpperCase() ?? '—'}
-        </Text>
-        <Text style={styles.gaugeLabel}>now</Text>
-      </View>
-    </View>
+      <DisclaimerBanner />
 
-    <View style={styles.workflowCard}>
-      <View style={styles.workflowHeader}>
-        <Ionicons name="sunny-outline" size={22} color="#1FAE9B" />
-        <Text style={styles.workflowTitle}>Caregiver Actions</Text>
-      </View>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Risk Domains</Text>
 
-      {data.recommended_action?.caregiver?.map((item: string, index: number) => (
-        <Text key={index} style={styles.workflowText}>• {item}</Text>
-      ))}
-    </View>
+        <View style={styles.domainGrid}>
+          <RiskCard
+            title="Heat Stress"
+            value={data.predictive_domains.heat_stress}
+            icon="thermometer"
+          />
 
-    <View style={styles.workflowCard}>
-      <View style={styles.workflowHeader}>
-        <Ionicons name="school-outline" size={22} color="#2F6BFF" />
-        <Text style={styles.workflowTitle}>School Advisory</Text>
+          <RiskCard
+            title="Respiratory Burden"
+            value={data.predictive_domains.respiratory}
+            icon="lungs"
+          />
+
+          <RiskCard
+            title="Dengue Watch"
+            value={data.predictive_domains.dengue}
+            icon="bug-outline"
+          />
+
+          <RiskCard title="Flood Risk" value={data.risks.flood} icon="waves-arrow-up" />
+        </View>
       </View>
 
-      {data.recommended_action?.school?.map((item: string, index: number) => (
-        <Text key={index} style={styles.workflowText}>• {item}</Text>
-      ))}
-    </View>
+      <View style={styles.outlookPanel}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.panelTitle}>72-Hour Outlook</Text>
+          <Text style={styles.largeValue}>{data.trend?.direction?.toUpperCase() ?? 'UNKNOWN'}</Text>
+          <Text style={styles.bodyText}>{data.trend?.message}</Text>
+        </View>
 
-    <View style={styles.workflowCard}>
-      <View style={styles.workflowHeader}>
-        <Ionicons name="people-outline" size={22} color="#6E5AEF" />
-        <Text style={styles.workflowTitle}>Community Guidance</Text>
+        <View
+          style={[
+            styles.gauge,
+            {
+              borderColor: riskBg(data.priority_alert),
+              backgroundColor: '#F8FAFC',
+            },
+          ]}
+        >
+          <Text style={[styles.gaugeValue, { color: riskText(data.priority_alert) }]}>
+            {data.priority_alert?.toUpperCase() ?? '—'}
+          </Text>
+          <Text style={styles.gaugeLabel}>now</Text>
+        </View>
       </View>
 
-      {data.recommended_action?.community?.map((item: string, index: number) => (
-        <Text key={index} style={styles.workflowText}>• {item}</Text>
-      ))}
-    </View>
+      <View style={styles.workflowCard}>
+        <View style={styles.workflowHeader}>
+          <Ionicons name="sunny-outline" size={22} color="#1FAE9B" />
+          <Text style={styles.workflowTitle}>Caregiver Actions</Text>
+        </View>
 
-    <View style={styles.section}>
-      <View style={styles.forecastHeader}>
-        <Text style={styles.sectionTitle}>3-Day Forecast</Text>
-        
-        <Pressable onPress={() => router.push('/full-forecast')}>
-          <Text style={styles.viewMore}>View Full Forecast ›</Text>
-        </Pressable>
-    </View>
+        {data.recommended_action?.caregiver?.map((item: string, index: number) => (
+          <Text key={index} style={styles.workflowText}>
+            • {item}
+          </Text>
+        ))}
+      </View>
 
-      <View style={styles.forecastGrid}>
-        {(data.forecast ?? []).slice(0, 3).map((day: any) => (
-          <View key={day.day} style={styles.forecastRow}>
-            <Ionicons
-              name={day.rainfall > 5 ? 'rainy-outline' : 'partly-sunny-outline'}
-              size={26}
-              color={day.rainfall > 5 ? '#2F6BFF' : '#D97706'}
-            />
-            <Text style={styles.forecastDay}>Day {day.day}</Text>
-            <Text style={styles.forecastText}>
-              {day.max_temperature}°C
-            </Text>
-            <Text style={styles.forecastRain}>{day.rainfall}mm rain</Text>
-            <Text style={[styles.riskBadge, { color: riskText(day.predicted_risk) }]}>
-              {day.predicted_risk?.toUpperCase() ?? 'UNKNOWN'}
-            </Text>
+      <View style={styles.workflowCard}>
+        <View style={styles.workflowHeader}>
+          <Ionicons name="school-outline" size={22} color="#2F6BFF" />
+          <Text style={styles.workflowTitle}>School Advisory</Text>
+        </View>
+
+        {data.recommended_action?.school?.map((item: string, index: number) => (
+          <Text key={index} style={styles.workflowText}>
+            • {item}
+          </Text>
+        ))}
+      </View>
+
+      <View style={styles.workflowCard}>
+        <View style={styles.workflowHeader}>
+          <Ionicons name="people-outline" size={22} color="#6E5AEF" />
+          <Text style={styles.workflowTitle}>Community Guidance</Text>
+        </View>
+
+        {data.recommended_action?.community?.map((item: string, index: number) => (
+          <Text key={index} style={styles.workflowText}>
+            • {item}
+          </Text>
+        ))}
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.forecastHeader}>
+          <Text style={styles.sectionTitle}>3-Day Forecast</Text>
+
+          <Pressable onPress={() => router.push('/full-forecast')}>
+            <Text style={styles.viewMore}>View Full Forecast ›</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.forecastGrid}>
+          {(data.forecast ?? []).slice(0, 3).map((day: any) => (
+            <View key={day.day} style={styles.forecastRow}>
+              <Ionicons
+                name={day.rainfall > 5 ? 'rainy-outline' : 'partly-sunny-outline'}
+                size={26}
+                color={day.rainfall > 5 ? '#2F6BFF' : '#D97706'}
+              />
+              <Text style={styles.forecastDay}>Day {day.day}</Text>
+              <Text style={styles.forecastText}>{day.max_temperature}°C</Text>
+              <Text style={styles.forecastRain}>{day.rainfall}mm rain</Text>
+              <Text style={[styles.riskBadge, { color: riskText(day.predicted_risk) }]}>
+                {day.predicted_risk?.toUpperCase() ?? 'UNKNOWN'}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.bottomGrid}>
+        <View style={styles.escalationPanel}>
+          <Ionicons name="shield-checkmark-outline" size={28} color="#D97706" />
+          <Text style={styles.panelTitle}>Escalation Status</Text>
+          <Text style={styles.escalationValue}>
+            {data.escalation?.level?.toUpperCase() ?? 'UNKNOWN'}
+          </Text>
+          <Text style={styles.darkBodyText}>{data.escalation?.reason}</Text>
+        </View>
+
+        <View style={styles.guidancePanel}>
+          <Ionicons name="sparkles-outline" size={26} color="#2F6BFF" />
+          <Text style={styles.guidanceTitle}>Age-Specific Guidance</Text>
+          <Text style={styles.guidanceSummary}>{data.guidance?.summary}</Text>
+        </View>
+      </View>
+
+      <View style={styles.fullGuidanceCard}>
+        <Text style={styles.workflowTitle}>Key Guidance Points</Text>
+
+        {data.guidance?.key_points?.map((point: string, index: number) => (
+          <View key={index} style={styles.guidancePoint}>
+            <Text style={styles.bullet}>•</Text>
+            <Text style={styles.guidanceText}>{point}</Text>
           </View>
         ))}
       </View>
-    </View>
-
-    <View style={styles.bottomGrid}>
-      <View style={styles.escalationPanel}>
-        <Ionicons name="shield-checkmark-outline" size={28} color="#D97706" />
-        <Text style={styles.panelTitle}>Escalation Status</Text>
-        <Text style={styles.escalationValue}>
-          {data.escalation?.level?.toUpperCase() ?? 'UNKNOWN'}
-        </Text>
-        <Text style={styles.darkBodyText}>{data.escalation?.reason}</Text>
-      </View>
-
-      <View style={styles.guidancePanel}>
-        <Ionicons name="sparkles-outline" size={26} color="#2F6BFF" />
-        <Text style={styles.guidanceTitle}>Age-Specific Guidance</Text>
-        <Text style={styles.guidanceSummary}>{data.guidance?.summary}</Text>
-      </View>
-    </View>
-
-    <View style={styles.fullGuidanceCard}>
-      <Text style={styles.workflowTitle}>Key Guidance Points</Text>
-
-      {data.guidance?.key_points?.map((point: string, index: number) => (
-        <View key={index} style={styles.guidancePoint}>
-          <Text style={styles.bullet}>•</Text>
-          <Text style={styles.guidanceText}>{point}</Text>
-        </View>
-      ))}
-    </View>
-  </ScrollView>
-);
+    </ScrollView>
+  );
 }
 
-function RiskCard({
-  title,
-  value,
-  icon,
-}: {
-  title: string;
-  value: string | undefined;
-  icon: any;
-}) {
+function RiskCard({ title, value, icon }: { title: string; value: string | undefined; icon: any }) {
   const colour = riskText(value);
   const bgColour = riskBg(value);
 
@@ -260,9 +253,7 @@ function RiskCard({
       </View>
 
       <Text style={styles.cardTitle}>{title}</Text>
-      <Text style={[styles.cardValue, { color: colour }]}>
-        {value?.toUpperCase() ?? 'UNKNOWN'}
-      </Text>
+      <Text style={[styles.cardValue, { color: colour }]}>{value?.toUpperCase() ?? 'UNKNOWN'}</Text>
 
       <View style={[styles.trendLine, { backgroundColor: colour }]} />
     </View>
@@ -427,9 +418,9 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   gauge: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
+    width: 120,
+    height: 120,
+    borderRadius: 100,
     borderWidth: 10,
     borderColor: '#BEEFD0',
     backgroundColor: '#EDFFF4',
@@ -438,9 +429,10 @@ const styles = StyleSheet.create({
     marginLeft: 16,
   },
   gaugeValue: {
-    fontSize: 30,
-    fontWeight: '900',
+    fontSize: 16,
+    fontWeight: '600',
     color: '#168C6E',
+    textAlign: 'center',
   },
   gaugeLabel: {
     fontSize: 13,

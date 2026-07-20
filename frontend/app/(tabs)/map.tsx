@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError, fetchEnvironmentRiskBatch, type BatchPoint } from '@/lib/api';
 import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
+
+// Android renders Google Maps, which throws an uncatchable native error at mount
+// if no API key is configured. iOS uses Apple Maps (no key needed). When the key
+// is absent we skip the native MapView and show the risk data as a list instead.
+const MAPS_AVAILABLE =
+  Platform.OS !== 'android' ||
+  Boolean(Constants.expoConfig?.extra?.hasGoogleMapsKey);
 
 export default function RegionalRiskMapScreen() {
   const insets = useSafeAreaInsets();
@@ -147,6 +155,55 @@ export default function RegionalRiskMapScreen() {
     );
   }
 
+  const panel = (
+    <>
+      <Text style={styles.title}>Regional Risk Map</Text>
+      <Text style={styles.subtitle}>
+        Live location-based climate-health risk intelligence
+      </Text>
+
+      <View style={styles.legendRow}>
+        <Text style={styles.legend}>Red: High</Text>
+        <Text style={styles.legend}>Orange: Moderate</Text>
+        <Text style={styles.legend}>Green: Low</Text>
+      </View>
+
+      <View style={styles.priorityList}>
+        <Text style={styles.priorityTitle}>Regional Priority Zones</Text>
+
+        {[...points]
+          .sort((a, b) => riskRank(b.priority_alert) - riskRank(a.priority_alert))
+          .slice(0, 3)
+          .map((point, index) => (
+            <View key={index} style={styles.priorityItem}>
+              <Text style={styles.priorityZone}>
+                {index + 1}. {point.label} — {point.priority_alert?.toUpperCase() ?? 'UNKNOWN'}
+              </Text>
+              <Text style={styles.priorityReason}>Driver: {point.reason}</Text>
+            </View>
+          ))}
+      </View>
+    </>
+  );
+
+  // No Google Maps key on Android: render the data without the native map rather
+  // than let MapView crash the tab.
+  if (!MAPS_AVAILABLE) {
+    return (
+      <View style={[styles.container, styles.fallbackScreen, { paddingTop: insets.top + 20 }]}>
+        <View style={styles.fallbackNotice}>
+          <Ionicons name="map-outline" size={30} color="#94A3B8" />
+          <Text style={styles.fallbackTitle}>Interactive map unavailable</Text>
+          <Text style={styles.fallbackBody}>
+            Map view isn&apos;t configured for this build. Regional risk details are shown below.
+          </Text>
+        </View>
+
+        <View style={styles.fallbackPanel}>{panel}</View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <MapView style={styles.map} initialRegion={region}>
@@ -164,36 +221,7 @@ export default function RegionalRiskMapScreen() {
         ))}
       </MapView>
 
-      <View style={[styles.overlay, { top: insets.top + 12 }]}>
-        <Text style={styles.title}>Regional Risk Map</Text>
-        <Text style={styles.subtitle}>
-          Live location-based climate-health risk intelligence
-        </Text>
-
-        <View style={styles.legendRow}>
-          <Text style={styles.legend}>Red: High</Text>
-          <Text style={styles.legend}>Orange: Moderate</Text>
-          <Text style={styles.legend}>Green: Low</Text>
-        </View>
-
-        <View style={styles.priorityList}>
-         <Text style={styles.priorityTitle}>Regional Priority Zones</Text>
-
-         {[...points]
-             .sort((a, b) => riskRank(b.priority_alert) - riskRank(a.priority_alert))
-             .slice(0, 3)
-             .map((point, index) => (
-             <View key={index} style={styles.priorityItem}>
-                 <Text style={styles.priorityZone}>
-                 {index + 1}. {point.label} — {point.priority_alert?.toUpperCase() ?? 'UNKNOWN'}
-                 </Text>
-                 <Text style={styles.priorityReason}>
-                 Driver: {point.reason}
-                 </Text>
-              </View>
-             ))}
-         </View>
-      </View>
+      <View style={[styles.overlay, { top: insets.top + 12 }]}>{panel}</View>
     </View>
   );
 }
@@ -204,6 +232,39 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  fallbackScreen: {
+    backgroundColor: '#F5F8FC',
+    paddingHorizontal: 18,
+  },
+  fallbackNotice: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: '#E6EBF2',
+    marginBottom: 16,
+  },
+  fallbackTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#101828',
+    marginTop: 10,
+  },
+  fallbackBody: {
+    fontSize: 13,
+    color: '#667085',
+    lineHeight: 19,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  fallbackPanel: {
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E6EBF2',
   },
   center: {
     flex: 1,
