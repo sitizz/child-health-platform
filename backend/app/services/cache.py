@@ -47,13 +47,20 @@ class RedisCache:
         self._redis = redis_client
 
     async def get(self, key: str) -> dict[str, Any] | None:
-        payload = await self._redis.get(key)
+        try:
+            payload = await self._redis.get(key)
+        except Exception:
+            logger.warning("redis_get_failed", key=key)
+            return None
         if not payload:
             return None
         return json.loads(payload)
 
     async def set(self, key: str, value: dict[str, Any], ttl_seconds: int) -> None:
-        await self._redis.set(key, json.dumps(value), ex=ttl_seconds)
+        try:
+            await self._redis.set(key, json.dumps(value), ex=ttl_seconds)
+        except Exception:
+            logger.warning("redis_set_failed", key=key)
 
     async def ping(self) -> bool:
         try:

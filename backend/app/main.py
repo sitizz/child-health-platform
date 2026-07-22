@@ -35,7 +35,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             from redis.asyncio import Redis
 
-            redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
+            redis_client = Redis.from_url(
+                settings.redis_url,
+                decode_responses=True,
+                socket_connect_timeout=2,
+            )
+            # from_url does not connect; ping so bad localhost URLs fall back
+            if not await RedisCache(redis_client).ping():
+                raise ConnectionError("redis ping failed")
             app.state.redis = redis_client
             app.state.cache = RedisCache(redis_client)
             logger.info("cache_backend", backend="redis")
@@ -43,6 +50,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.exception("redis_init_failed_falling_back_to_memory")
             app.state.redis = None
             app.state.cache = InMemoryCache()
+            logger.info("cache_backend", backend="memory")
     else:
         app.state.redis = None
         app.state.cache = InMemoryCache()
