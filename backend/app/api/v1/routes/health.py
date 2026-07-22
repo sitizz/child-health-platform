@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.core.config import get_settings
+from app.db.session import engine
 from app.schemas.health import HealthResponse, ReadinessResponse, RootStatusResponse
 
 router = APIRouter(tags=["Health"])
@@ -11,7 +13,6 @@ router = APIRouter(tags=["Health"])
     "/",
     response_model=RootStatusResponse,
     summary="Service root status",
-    responses={200: {"description": "Service is running"}},
 )
 async def root_status() -> RootStatusResponse:
     settings = get_settings()
@@ -22,27 +23,23 @@ async def root_status() -> RootStatusResponse:
     )
 
 
-@router.get(
-    "/healthz",
-    response_model=HealthResponse,
-    summary="Liveness probe",
-    responses={200: {"description": "Process is alive"}},
-)
+@router.get("/healthz", response_model=HealthResponse, summary="Liveness probe")
 async def healthz() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
-@router.get(
-    "/readyz",
-    response_model=ReadinessResponse,
-    summary="Readiness probe",
-    responses={
-        200: {"description": "Service is ready to accept traffic"},
-        503: {"description": "Service is not ready"},
-    },
-)
+@router.get("/readyz", response_model=ReadinessResponse, summary="Readiness probe")
 async def readyz(request: Request) -> ReadinessResponse | JSONResponse:
     checks: dict[str, str] = {}
+
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+        db_ok = True
+    except Exception:
+        checks["database"] = "unavailable"
+        db_ok = False
 
     cache_ok = await request.app.state.cache.ping()
     checks["cache"] = "ok" if cache_ok else "unavailable"
@@ -50,11 +47,11 @@ async def readyz(request: Request) -> ReadinessResponse | JSONResponse:
     upstream_ok = await request.app.state.open_meteo.ping()
     checks["open_meteo"] = "ok" if upstream_ok else "unavailable"
 
-    if not cache_ok and not upstream_ok:
+    if not db_ok:
         return JSONResponse(
             status_code=503,
             content=ReadinessResponse(status="not_ready", checks=checks).model_dump(),
         )
 
-    status_value: str = "ready" if upstream_ok else "degraded"
+    status_value = "ready" if upstream_ok and cache_ok else "degraded"
     return ReadinessResponse(status=status_value, checks=checks)  # type: ignore[arg-type]

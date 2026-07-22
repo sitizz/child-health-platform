@@ -8,14 +8,20 @@ WORKDIR /app
 
 RUN useradd --create-home --uid 10001 appuser
 
-COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install --upgrade pip && pip install -r requirements-dev.txt
 
 COPY app ./app
 COPY main.py .
+COPY alembic.ini .
+COPY alembic ./alembic
+COPY pytest.ini .
+COPY tests ./tests
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh && chown -R appuser:appuser /app
 
 USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]
+ENTRYPOINT ["./entrypoint.sh"]

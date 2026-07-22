@@ -15,6 +15,14 @@ EXPECTED_OPENAPI_PATHS = {
     "/api/v1/system/",
     "/api/v1/system/healthz",
     "/api/v1/system/readyz",
+    "/api/v1/auth/register",
+    "/api/v1/auth/login",
+    "/api/v1/auth/me",
+    "/api/v1/consent/current",
+    "/api/v1/disclaimer/current",
+    "/api/v1/children",
+    "/api/v1/panel/overview",
+    "/api/v1/devices",
 }
 
 
@@ -100,17 +108,22 @@ async def test_validation_rejects_bad_coords(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_api_key_required_when_configured(monkeypatch: pytest.MonkeyPatch):
+    import httpx
+    from httpx import ASGITransport
+
+    from app.clients.open_meteo import OpenMeteoClient
+    from app.domain.scoring import EnvironmentObservation
+    from app.services.cache import InMemoryCache
+
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("API_KEY", "secret-key")
     monkeypatch.setenv("ENABLE_DOCS", "true")
     get_settings.cache_clear()
 
     app = create_app()
-    from httpx import ASGITransport
+    settings = get_settings()
 
     async def fake_fetch(self, lat: float, lon: float):
-        from app.domain.scoring import EnvironmentObservation
-
         return EnvironmentObservation(
             temperature=30,
             humidity=50,
@@ -126,6 +139,7 @@ async def test_api_key_required_when_configured(monkeypatch: pytest.MonkeyPatch)
         "app.clients.open_meteo.OpenMeteoClient.fetch_observation",
         fake_fetch,
     )
+
     async def fake_ping(self):
         return True
 
@@ -133,6 +147,12 @@ async def test_api_key_required_when_configured(monkeypatch: pytest.MonkeyPatch)
         "app.clients.open_meteo.OpenMeteoClient.ping",
         fake_ping,
     )
+
+    http_client = httpx.AsyncClient()
+    app.state.http_client = http_client
+    app.state.open_meteo = OpenMeteoClient(http_client, settings)
+    app.state.redis = None
+    app.state.cache = InMemoryCache()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -149,4 +169,5 @@ async def test_api_key_required_when_configured(monkeypatch: pytest.MonkeyPatch)
         )
         assert ok.status_code == 200
 
+    await http_client.aclose()
     get_settings.cache_clear()

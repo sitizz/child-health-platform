@@ -97,13 +97,24 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         request_id = getattr(request.state, "request_id", None)
+        # Strip non-JSON-serializable ctx values (e.g. raw Exception instances)
+        safe_errors: list[dict[str, Any]] = []
+        for err in exc.errors():
+            item = {k: v for k, v in err.items() if k != "ctx"}
+            ctx = err.get("ctx")
+            if isinstance(ctx, dict):
+                item["ctx"] = {
+                    ck: (str(cv) if isinstance(cv, Exception) else cv)
+                    for ck, cv in ctx.items()
+                }
+            safe_errors.append(item)
         return JSONResponse(
             status_code=422,
             content=_error_body(
                 code="validation_error",
                 message="Request validation failed",
                 request_id=request_id,
-                details={"errors": exc.errors()},
+                details={"errors": safe_errors},
             ),
         )
 

@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: childguard
+      POSTGRES_PASSWORD: childguard
+      POSTGRES_DB: childguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U childguard -d childguard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    ports:
+      # Host 18000 avoids common local conflicts on 8000/8001
+      - "18000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://childguard:childguard@db:5432/childguard
+      REDIS_URL: redis://redis:6379/0
+      APP_ENV: development
+      ENABLE_DOCS: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./main.py:/app/main.py
+      - ./tests:/app/tests
+      - ./pytest.ini:/app/pytest.ini
+
+volumes:
+  pgdata:
+  redisdata:
