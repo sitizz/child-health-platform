@@ -78,6 +78,91 @@ uvicorn main:app --reload --port 8000
 2. **`Authorization: Bearer <access>`** — JWT after register/login for caregiver routes.
 3. Personalised routes also require accepted consent + disclaimer ack (`403` with `consent_required` / `disclaimer_required`).
 
-## Render note
+## Deploy on Render
 
-Compose is for local/dev. Render still runs the API as a native Python service until Postgres/Redis are provisioned there separately.
+Compose is for **local/dev only**. On Render, run a **native Python** web service plus a **Postgres** database.
+
+### Service settings
+
+| Setting | Value |
+|---------|--------|
+| Root Directory | `backend` |
+| Runtime | Python 3 |
+| Build Command | `pip install -r requirements.txt` |
+| Start Command | `alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT` |
+| Health check path | `/healthz` |
+
+Also create a **Render Postgres** instance and link it to the web service.
+
+### Environment variables (paste into Render)
+
+Generate a JWT secret locally:
+
+```bash
+openssl rand -hex 32
+```
+
+```env
+APP_ENV=production
+APP_NAME=Child Guard API
+APP_VERSION=1.0.0
+PYTHON_VERSION=3.12.11
+LOG_LEVEL=INFO
+
+# Render Postgres URL with scheme swapped:
+# postgresql://…  →  postgresql+asyncpg://…
+DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:5432/DBNAME
+
+JWT_SECRET=<openssl-rand-hex-32>
+JWT_ACCESS_TTL_MIN=60
+JWT_REFRESH_TTL_DAYS=7
+
+API_KEY=<same-key-as-mobile-app>
+CORS_ORIGINS=*
+RATE_LIMIT=60/minute
+CACHE_TTL_SECONDS=300
+OPEN_METEO_TIMEOUT_SECONDS=8.0
+OPEN_METEO_FORECAST_URL=https://api.open-meteo.com/v1/forecast
+OPEN_METEO_AIR_URL=https://air-quality-api.open-meteo.com/v1/air-quality
+
+ENABLE_DOCS=false
+MODEL_VERSION=env-risk-heuristic-v2
+CONSENT_VERSION=consent-v1
+DISCLAIMER_VERSION=disclaimer-v1
+PRIVACY_POLICY_URL=https://child-health-platform.onrender.com/privacy
+TERMS_URL=https://child-health-platform.onrender.com/terms
+
+NOTIFICATION_COOLDOWN_MINUTES=180
+MAX_CHILDREN_PER_CAREGIVER=10
+```
+
+Optional:
+
+```env
+# REDIS_URL=redis://…          # omit → in-memory cache
+# EXPO_ACCESS_TOKEN=…          # Expo push from server
+```
+
+### `DATABASE_URL` tip
+
+Render shows:
+
+```text
+postgresql://user:pass@dpg-xxx/dbname
+```
+
+Set on the service:
+
+```text
+postgresql+asyncpg://user:pass@dpg-xxx/dbname
+```
+
+Do **not** use the local Compose URL (`localhost` / `childguard:childguard`).
+
+### After deploy checklist
+
+1. `GET /healthz` → `200`
+2. `GET /readyz` → `database: ok` (may be `degraded` if Open-Meteo blips)
+3. Risk call with `X-API-Key` still works
+4. `POST /api/v1/auth/register` works (needs Postgres + migrate)
+5. Mobile app: keep sending `X-API-Key`; new flows also need JWT after login
