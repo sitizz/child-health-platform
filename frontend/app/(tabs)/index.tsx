@@ -9,10 +9,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { DisclaimerBanner } from '@/components/disclaimer-banner';
+import { PersonalisedRecommendations } from '@/components/personalised-recommendations';
 import { applyAlertPreference } from '@/lib/alerts';
 import { type ChildProfile, type EnvironmentRisk } from '@/lib/api';
 import { CONSENT_VERSION, hasPersonalisedAccess, loadConsent } from '@/lib/consent';
+import { loadRiskHistory, type RiskHistoryEntry } from '@/lib/history';
 import { loadSelectedChild } from '@/lib/profile';
+import { generateRecommendations } from '@/lib/recommendations';
 import { runRiskCheck } from '@/lib/risk-check';
 import { aqiColour, aqiLevel, elevatedDomains, riskBg, riskRing, riskText } from '@/lib/risk';
 
@@ -25,6 +28,7 @@ export default function HomeScreen() {
  const [isStale, setIsStale] = useState(false);
  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
  const [selectedChild, setSelectedChild] = useState<ChildProfile | null>(null);
+ const [history, setHistory] = useState<RiskHistoryEntry[]>([]);
  // Set when the user declined or withdrew consent: personalised monitoring is
  // locked, but the app shell remains usable so they can re-consent.
  const [accessLimited, setAccessLimited] = useState(false);
@@ -48,6 +52,10 @@ export default function HomeScreen() {
    setIsStale(outcome.stale);
    setLastUpdated(outcome.updatedAt);
    setLoading(false);
+
+   // Refresh the local history so trend-based recommendations reflect the check
+   // that just ran.
+   setHistory(await loadRiskHistory());
  }, []);
 
 
@@ -491,27 +499,18 @@ useEffect(() => {
             </View>
           </View>
 
-          <View style={styles.actionCard}>
-            <Text style={styles.cardTitle}>Immediate Actions</Text>
+          {selectedChild && (
+            <View style={styles.actionCard}>
+              <Text style={styles.cardTitle}>Personalised Recommendations</Text>
+              <Text style={styles.actionSubtitle}>
+                Tailored to {selectedChild.name}&apos;s age, symptoms, conditions and today&apos;s exposure
+              </Text>
 
-            <View style={styles.actionSplit}>
-              <View style={styles.recommendedBox}>
-                <Text style={styles.actionTitle}>Recommended</Text>
-
-                {result.recommended_action?.immediate?.map((item: string, index: number) => (
-                  <Text key={index} style={styles.actionText}>✓ {item}</Text>
-                ))}
-              </View>
-
-              <View style={styles.escalateBox}>
-                <Text style={styles.actionTitle}>Escalate if</Text>
-
-                {result.recommended_action?.when_to_escalate?.map((item: string, index: number) => (
-                  <Text key={index} style={styles.actionText}>• {item}</Text>
-                ))}
-              </View>
+              <PersonalisedRecommendations
+                items={generateRecommendations(selectedChild, result, history)}
+              />
             </View>
-          </View>
+          )}
 
           <Pressable style={styles.shareButton} onPress={shareAlert}>
             <View style={styles.shareIcon}>
@@ -1056,32 +1055,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E6EBF2',
   },
-  actionSplit: {
-    flexDirection: 'row',
-    marginTop: 14,
-    borderRadius: 18,
-    overflow: 'hidden',
-  },
-  recommendedBox: {
-    flex: 1,
-    backgroundColor: '#ECFFF4',
-    padding: 14,
-  },
-  escalateBox: {
-    flex: 1,
-    backgroundColor: '#FFF7E8',
-    padding: 14,
-  },
-  actionTitle: {
-    color: '#101828',
-    fontSize: 13,
-    fontWeight: '900',
-    marginBottom: 8,
-  },
-  actionText: {
+  actionSubtitle: {
     color: '#667085',
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 2,
+    marginBottom: 14,
   },
   shareButton: {
     backgroundColor: '#2F55E7',

@@ -13,7 +13,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PersonalisedRecommendations } from '@/components/personalised-recommendations';
 import { type ChildProfile, type EnvironmentRisk, type RiskLevel } from '@/lib/api';
+import { generateRecommendations } from '@/lib/recommendations';
 import {
   fetchHouseholdRisk,
   type HouseholdRisk,
@@ -90,8 +92,11 @@ export default function CaregiverDashboardScreen() {
     router.navigate('/');
   };
 
-  const recommendations = collectRecommendations(latest?.data);
   const selectedChild = children.find((c) => c.id === selectedId);
+  const recommendations =
+    selectedChild && latest?.data
+      ? generateRecommendations(selectedChild, latest.data, history)
+      : [];
 
   return (
     <ScrollView
@@ -161,28 +166,26 @@ export default function CaregiverDashboardScreen() {
         ))}
       </View>
 
-      {/* Current recommendations */}
+      {/* Personalised recommendations */}
       <SectionHeader title="Recommendations" />
-      <View style={styles.card}>
-        {recommendations.length ? (
-          <>
-            {selectedChild && (
-              <Text style={styles.recoFor}>For {selectedChild.name} · updated {relTime(latest!.cachedAt)}</Text>
-            )}
-            {recommendations.map((item, i) => (
-              <View key={i} style={styles.recoRow}>
-                <Ionicons name="checkmark-circle" size={18} color="#1FAE9B" style={{ marginTop: 1 }} />
-                <Text style={styles.recoText}>{item}</Text>
-              </View>
-            ))}
-          </>
-        ) : (
+      {recommendations.length ? (
+        <>
+          {selectedChild && latest && (
+            <Text style={styles.recoFor}>
+              Personalised for {selectedChild.name} · updated {relTime(latest.cachedAt)}
+            </Text>
+          )}
+          <PersonalisedRecommendations items={recommendations} />
+          <View style={{ height: 22 }} />
+        </>
+      ) : (
+        <View style={styles.card}>
           <EmptyState
             icon="bulb-outline"
-            text="Open the Home tab to generate the latest recommendations for your child."
+            text="Open the Home tab to generate personalised recommendations for your child."
           />
-        )}
-      </View>
+        </View>
+      )}
 
       {/* Notifications feed */}
       <SectionHeader title="Notifications" />
@@ -244,12 +247,6 @@ export default function CaregiverDashboardScreen() {
       </View>
     </ScrollView>
   );
-}
-
-function collectRecommendations(data?: EnvironmentRisk): string[] {
-  if (!data?.recommended_action) return [];
-  const { immediate = [], caregiver = [] } = data.recommended_action;
-  return [...immediate, ...caregiver].slice(0, 5);
 }
 
 function SectionHeader({ title, actionLabel, onAction }: { title: string; actionLabel?: string; onAction?: () => void }) {
@@ -339,9 +336,7 @@ const styles = StyleSheet.create({
   childMeta: { fontSize: 12, color: '#667085', marginTop: 2 },
   badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, minWidth: 44, alignItems: 'center' },
   badgeText: { fontSize: 11, fontWeight: '900' },
-  recoFor: { fontSize: 12, color: '#667085', marginBottom: 10, fontWeight: '700' },
-  recoRow: { flexDirection: 'row', gap: 10, marginBottom: 10, alignItems: 'flex-start' },
-  recoText: { flex: 1, fontSize: 14, color: '#334155', lineHeight: 20 },
+  recoFor: { fontSize: 12, color: '#667085', marginBottom: 12, fontWeight: '700' },
   notifRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   notifIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   notifTitle: { fontSize: 14, fontWeight: '800', color: '#101828' },
