@@ -1,8 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import Constants from 'expo-constants';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError, fetchEnvironmentRiskBatch, type BatchPoint } from '@/lib/api';
@@ -12,8 +12,7 @@ import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
 // if no API key is configured. iOS uses Apple Maps (no key needed). When the key
 // is absent we skip the native MapView and show the risk data as a list instead.
 const MAPS_AVAILABLE =
-  Platform.OS !== 'android' ||
-  Boolean(Constants.expoConfig?.extra?.hasGoogleMapsKey);
+  Platform.OS !== 'android' || Boolean(Constants.expoConfig?.extra?.hasGoogleMapsKey);
 
 export default function RegionalRiskMapScreen() {
   const insets = useSafeAreaInsets();
@@ -79,6 +78,8 @@ export default function RegionalRiskMapScreen() {
         ];
       });
 
+      console.log(successfulResults);
+
       // Every zone failing means the service is unreachable, not that the area
       // is risk-free. Showing an empty map would imply the latter.
       if (!successfulResults.length) {
@@ -92,9 +93,7 @@ export default function RegionalRiskMapScreen() {
     } catch (err) {
       console.error('Regional map error:', err);
 
-      setError(
-        err instanceof ApiError ? err.message : 'Unable to load regional risk map.'
-      );
+      setError(err instanceof ApiError ? err.message : 'Unable to load regional risk map.');
     } finally {
       setLoading(false);
     }
@@ -158,9 +157,7 @@ export default function RegionalRiskMapScreen() {
   const panel = (
     <>
       <Text style={styles.title}>Regional Risk Map</Text>
-      <Text style={styles.subtitle}>
-        Live location-based climate-health risk intelligence
-      </Text>
+      <Text style={styles.subtitle}>Live location-based climate-health risk intelligence</Text>
 
       <View style={styles.legendRow}>
         <Text style={styles.legend}>Red: High</Text>
@@ -326,32 +323,32 @@ const styles = StyleSheet.create({
     color: '#374151',
   },
   priorityList: {
-  marginTop: 14,
-  borderTopWidth: 1,
-  borderTopColor: '#E5E7EB',
-  paddingTop: 12,
-},
+    marginTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    paddingTop: 12,
+  },
 
-priorityTitle: {
-  fontSize: 14,
-  fontWeight: '900',
-  color: '#111827',
-  marginBottom: 8,
-},
+  priorityTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#111827',
+    marginBottom: 8,
+  },
 
-priorityItem: {
-  marginBottom: 8,
-},
+  priorityItem: {
+    marginBottom: 8,
+  },
 
-priorityZone: {
-  fontSize: 13,
-  fontWeight: '800',
-  color: '#111827',
-},
+  priorityZone: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#111827',
+  },
 
-priorityReason: {
-  fontSize: 12,
-  color: '#6B7280',
-  marginTop: 2,
-},
+  priorityReason: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
 });
