@@ -35,6 +35,7 @@ const APP_KEYS = [
   'lastRiskResult',
   'prevRiskLevel',
   'lastKnownCoords',
+  'householdRisk',
 ];
 
 type Account = { name: string; email: string };
@@ -176,6 +177,14 @@ export default function SettingsScreen() {
             {!!account.email && <Text style={styles.accountEmail}>{account.email}</Text>}
           </View>
         </View>
+
+        <Row
+          icon="people-outline"
+          label="Manage children"
+          onPress={() => router.push('/children')}
+          disabled={!granted}
+          hint={!granted ? 'Requires consent' : undefined}
+        />
 
         <Row
           icon="create-outline"

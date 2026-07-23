@@ -173,7 +173,8 @@ useEffect(() => {
      console.warn('Notification setup skipped:', err);
    }
 
-   checkRisk();
+   // The fetch itself is driven by the selectedChild effect below, so switching
+   // children re-runs it for the newly selected child without a double fetch.
  };
 
  initialiseApp();
@@ -189,6 +190,14 @@ useEffect(() => {
    clearInterval(interval);
  };
 }, [checkRisk]);
+
+
+// Fetches whenever the selected child changes — on first load and every time the
+// user switches child in the hub — so the dashboard always reflects the selected
+// child. Keyed on the id so returning to Home without switching does not refetch.
+useEffect(() => {
+ if (selectedChild?.id) checkRisk();
+}, [selectedChild?.id, checkRisk]);
 
 
  const formatUpdated = (iso: string | null) => {
@@ -318,7 +327,12 @@ useEffect(() => {
       )}
 
       {selectedChild && (
-        <View style={styles.childCard}>
+        <Pressable
+          style={styles.childCard}
+          onPress={() => router.push('/children')}
+          accessibilityRole="button"
+          accessibilityLabel="Switch or manage children"
+        >
           <View style={styles.avatarCircle}>
             <Ionicons name="person" size={30} color="#2F6B9A" />
           </View>
@@ -342,6 +356,11 @@ useEffect(() => {
               <View style={styles.smallGreenDot} />
               <Text style={styles.monitorText}>Monitoring active</Text>
             </View>
+
+            <View style={styles.switchHintRow}>
+              <Ionicons name="swap-horizontal" size={13} color="#2F6BFF" />
+              <Text style={styles.switchHint}>Tap to switch or add children</Text>
+            </View>
           </View>
 
           <Pressable
@@ -353,7 +372,7 @@ useEffect(() => {
             <Ionicons name="create-outline" size={18} color="#2F6BFF" />
             <Text style={styles.editText}>Edit</Text>
           </Pressable>
-        </View>
+        </Pressable>
       )}
 
       <Pressable
@@ -828,6 +847,17 @@ const styles = StyleSheet.create({
     color: '#168C6E',
     fontSize: 14,
     fontWeight: '800',
+  },
+  switchHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 6,
+  },
+  switchHint: {
+    color: '#2F6BFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   editButton: {
     backgroundColor: '#EEF5FF',

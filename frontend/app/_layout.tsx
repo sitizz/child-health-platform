@@ -38,6 +38,8 @@ export default function RootLayout() {
           <Stack.Screen name="full-forecast" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="legal" />
+          <Stack.Screen name="children" />
+          <Stack.Screen name="child-form" />
       </Stack>
       </ErrorBoundary>
       <StatusBar style="auto" />
