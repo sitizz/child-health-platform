@@ -36,6 +36,8 @@ const APP_KEYS = [
   'prevRiskLevel',
   'lastKnownCoords',
   'householdRisk',
+  'riskHistory',
+  'notificationLog',
 ];
 
 type Account = { name: string; email: string };

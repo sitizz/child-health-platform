@@ -3,7 +3,9 @@ import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 
 import { ApiError, fetchEnvironmentRisk, type EnvironmentRisk, type RiskLevel } from './api';
+import { appendRiskHistory } from './history';
 import { immediateTrigger } from './notifications';
+import { logNotification } from './notifications-log';
 import { loadSelectedChild } from './profile';
 
 const PREV_RISK_KEY = 'prevRiskLevel';
@@ -96,9 +98,14 @@ async function readPrevRisk(): Promise<string | null> {
  * permission was revoked mid-session. Either way the risk data is still valid
  * and must still reach the screen.
  */
-async function notifyOnTransition(prev: string | null, next: RiskLevel, action: string) {
+async function notifyOnTransition(
+  prev: string | null,
+  next: RiskLevel,
+  action: string,
+  childName: string
+) {
   try {
-    await deliverTransitionNotification(prev, next, action);
+    await deliverTransitionNotification(prev, next, action, childName);
   } catch (err) {
     console.warn('[risk-check] notification delivery failed (data unaffected):', err);
   }
@@ -107,7 +114,8 @@ async function notifyOnTransition(prev: string | null, next: RiskLevel, action: 
 async function deliverTransitionNotification(
   prev: string | null,
   next: RiskLevel,
-  action: string
+  action: string,
+  childName: string
 ) {
   if (next === 'high' && prev !== 'high') {
     await Notifications.scheduleNotificationAsync({
@@ -119,17 +127,19 @@ async function deliverTransitionNotification(
       },
       trigger: immediateTrigger(),
     });
+
+    await logNotification({ type: 'high', title: 'High Risk Alert', body: action, childName, at: new Date().toISOString() });
   }
 
   if (prev === 'high' && next !== 'high') {
+    const body = 'Risk levels have improved. Conditions are safer now.';
+
     await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '✅ Risk Improved',
-        body: 'Risk levels have improved. Conditions are safer now.',
-        sound: true,
-      },
+      content: { title: '✅ Risk Improved', body, sound: true },
       trigger: immediateTrigger(),
     });
+
+    await logNotification({ type: 'improved', title: 'Risk Improved', body, childName, at: new Date().toISOString() });
   }
 }
 
@@ -157,8 +167,18 @@ export async function runRiskCheck(
 
     const prev = await readPrevRisk();
 
-    await notifyOnTransition(prev, data.priority_alert, data.action);
+    await notifyOnTransition(prev, data.priority_alert, data.action, child.name);
     await AsyncStorage.setItem(PREV_RISK_KEY, data.priority_alert);
+
+    // Change-based history for the caregiver dashboard timeline.
+    await appendRiskHistory({
+      childId: child.id,
+      childName: child.name,
+      level: data.priority_alert,
+      temperature: data.environment?.temperature ?? null,
+      aqi: data.environment?.aqi ?? null,
+      at: new Date().toISOString(),
+    });
 
     const updatedAt = new Date().toISOString();
 
