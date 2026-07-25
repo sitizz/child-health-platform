@@ -14,6 +14,8 @@
     "build:dev:android": "npx eas-cli build --profile development --platform android",
     "build:dev:ios": "npx eas-cli build --profile development --platform ios",
     "build:preview:android": "npx eas-cli build --profile preview --platform android",
+    "build:apk": "npx eas-cli build --profile preview --platform android",
+    "build:apk:local": "npx eas-cli build --profile preview --platform android --local",
     "prebuild:clean": "expo prebuild --clean",
     "doctor": "npx expo-doctor"
   },
