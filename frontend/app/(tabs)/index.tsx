@@ -1,562 +1,306 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Text, View, Pressable, StyleSheet, ScrollView, Share } from 'react-native';
-// react-native's own SafeAreaView is iOS-only and renders as a plain View on
-// Android, leaving content under the status bar / camera cutout.
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { DisclaimerBanner } from '@/components/disclaimer-banner';
-import { PersonalisedRecommendations } from '@/components/personalised-recommendations';
-import { applyAlertPreference } from '@/lib/alerts';
-import { type ChildProfile, type EnvironmentRisk } from '@/lib/api';
-import { CONSENT_VERSION, hasPersonalisedAccess, loadConsent } from '@/lib/consent';
-import { loadRiskHistory, type RiskHistoryEntry } from '@/lib/history';
-import { loadSelectedChild } from '@/lib/profile';
-import { generateRecommendations } from '@/lib/recommendations';
-import { runRiskCheck } from '@/lib/risk-check';
-import { aqiColour, aqiLevel, elevatedDomains, riskBg, riskRing, riskText } from '@/lib/risk';
-
-const REFRESH_INTERVAL_MS = 300000;
+import { ServerRecommendations } from '@/components/server-recommendations';
+import { ApiError, type RiskLevel } from '@/lib/api';
+import { getChildRecommendations, type RecommendationResult, type ServerChild } from '@/lib/children-api';
+import { ageGroup, ageGroupLabel, childDisplayName, getSelectedChild } from '@/lib/current-child';
+import { resolveStartRoute, routeForGateError } from '@/lib/gate';
+import { getCurrentCoords } from '@/lib/location';
+import { registerPushDevice } from '@/lib/push';
+import { aqiColour, aqiLevel, riskBg, riskRing, riskText } from '@/lib/risk';
 
 export default function HomeScreen() {
- const [result, setResult] = useState<EnvironmentRisk | null>(null);
- const [loading, setLoading] = useState(false);
- const [error, setError] = useState<string | null>(null);
- const [isStale, setIsStale] = useState(false);
- const [lastUpdated, setLastUpdated] = useState<string | null>(null);
- const [selectedChild, setSelectedChild] = useState<ChildProfile | null>(null);
- const [history, setHistory] = useState<RiskHistoryEntry[]>([]);
- // Set when the user declined or withdrew consent: personalised monitoring is
- // locked, but the app shell remains usable so they can re-consent.
- const [accessLimited, setAccessLimited] = useState(false);
+  const [child, setChild] = useState<ServerChild | null>(null);
+  const [result, setResult] = useState<RecommendationResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [gateChecked, setGateChecked] = useState(false);
 
- // Guards the polling interval and manual checks so neither runs while access is
- // limited. A ref because the interval closure is created once with stale state.
- const monitoringRef = useRef(false);
+  const loadRisk = useCallback(async (target?: ServerChild | null) => {
+    setLoading(true);
+    setError(null);
 
- // Delegates to the same engine the background task uses, so the alert rules
- // cannot drift between foreground and background. Previous risk is persisted
- // inside runRiskCheck rather than held here, so transitions survive restarts.
- const checkRisk = useCallback(async () => {
-   if (!monitoringRef.current) return;
+    try {
+      const selected = target ?? (await getSelectedChild());
+      setChild(selected);
 
-   setLoading(true);
+      if (!selected) {
+        router.replace('/profile-setup');
+        return;
+      }
 
-   const outcome = await runRiskCheck();
+      const { lat, lon } = await getCurrentCoords();
+      const data = await getChildRecommendations(selected.id, lat, lon);
 
-   setResult(outcome.data);
-   setError(outcome.error);
-   setIsStale(outcome.stale);
-   setLastUpdated(outcome.updatedAt);
-   setLoading(false);
+      setResult(data);
+      setUpdatedAt(new Date().toISOString());
+    } catch (err) {
+      if (routeForGateError(err)) return;
+      setError(err instanceof ApiError ? err.message : 'Unable to check risk right now. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-   // Refresh the local history so trend-based recommendations reflect the check
-   // that just ran.
-   setHistory(await loadRiskHistory());
- }, []);
+  // On mount, walk the server gates and land here only when fully onboarded.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const route = await resolveStartRoute();
+        if (cancelled) return;
+        if (route !== '/') {
+          router.replace(route);
+          return;
+        }
+        setGateChecked(true);
+        registerPushDevice().catch(() => {});
+        loadRisk();
+      } catch {
+        if (!cancelled) {
+          setGateChecked(true);
+          setLoading(false);
+          setError('Unable to reach the server. Please check your connection and try again.');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadRisk]);
 
+  // When the selected child changes elsewhere (hub), refresh on focus.
+  useFocusEffect(
+    useCallback(() => {
+      if (!gateChecked) return;
+      let active = true;
+      (async () => {
+        const selected = await getSelectedChild();
+        if (!active) return;
+        if (selected?.id !== child?.id) loadRisk(selected);
+      })();
+      return () => {
+        active = false;
+      };
+    }, [gateChecked, child?.id, loadRisk])
+  );
 
- const shareAlert = async () => {
- if (!result) return;
+  const shareAlert = async () => {
+    if (!result) return;
+    const env = result.environment ?? {};
+    const message = `Child Health Alert
 
- const message = `
-Child Health Alert
+Risk Priority: ${result.overall_risk?.toUpperCase() ?? 'UNKNOWN'}
+Primary hazards: ${result.primary_hazards?.join(', ') || 'none'}
 
+Priority actions:
+${(result.priority_actions ?? []).map((a) => `• ${a}`).join('\n')}
 
-Risk Priority: ${result.priority_alert ? result.priority_alert.toUpperCase() : 'UNKNOWN'}
-${isStale ? `\nNOTE: Offline data, last updated ${formatUpdated(lastUpdated)}.\n` : ''}
+Environmental conditions:
+Temperature: ${env.temperature ?? '—'}°C
+AQI (US): ${env.aqi ?? 'Unavailable'}
 
-Recommended Action:
-${result.action}
+${result.disclaimer ?? 'Generated by Child Guard. Environmental guidance only — not medical advice.'}`;
+    await Share.share({ message });
+  };
 
+  const formatUpdated = (iso: string | null) => {
+    if (!iso) return 'Not yet';
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
-Environmental Conditions:
-Temperature: ${result.environment.temperature}°C
-Humidity: ${result.environment.humidity}%
-Rainfall: ${result.environment.rainfall} mm
-AQI (US): ${result.environment.aqi ?? 'Unavailable'}
-PM2.5: ${result.environment.pm2_5} µg/m³
-PM10: ${result.environment.pm10} µg/m³
+  if (!gateChecked || (loading && !result)) {
+    return (
+      <View style={[styles.safe, styles.center]}>
+        <ActivityIndicator size="large" />
+        <Text style={styles.loadingText}>Assessing environmental risk…</Text>
+      </View>
+    );
+  }
 
+  const env = result?.environment ?? {};
+  const risks = result?.risks ?? {};
+  const elevated = Object.values(risks).filter((v) => v === 'high' || v === 'moderate').length;
+  const total = Object.values(risks).length || 4;
 
-Child Vulnerability:
-${result.child_vulnerability?.level?.toUpperCase() ?? 'UNKNOWN'}
-
-
-Generated by Child Guard. Environmental guidance only — not medical advice.
-`;
-
- await Share.share({ message });
-};
-
-
-// Re-evaluates access every time Home regains focus so that withdrawing or
-// re-granting consent in Settings takes effect immediately, without an app
-// restart. Never navigates — the mount-time gate owns redirects.
-useFocusEffect(
- useCallback(() => {
-   let active = true;
-
-   (async () => {
-     const consent = await loadConsent();
-
-     if (!active) return;
-
-     if (!hasPersonalisedAccess(consent)) {
-       monitoringRef.current = false;
-       setAccessLimited(true);
-       return;
-     }
-
-     monitoringRef.current = true;
-     setAccessLimited(false);
-     setSelectedChild(await loadSelectedChild());
-   })();
-
-   return () => {
-     active = false;
-   };
- }, [])
-);
-
-
-useEffect(() => {
- let cancelled = false;
-
- const initialiseApp = async () => {
-   const authSession = await AsyncStorage.getItem('authSession');
-
-   if (!authSession) {
-     router.replace('/login');
-     return;
-   }
-
-   const consent = await loadConsent();
-
-   // No record at all: first run — present the consent notice.
-   if (!consent) {
-     router.replace('/consent');
-     return;
-   }
-
-   // Declined or withdrawn: stay in the app but lock personalised features.
-   if (consent.status === 'declined') {
-     if (cancelled) return;
-     monitoringRef.current = false;
-     setAccessLimited(true);
-     return;
-   }
-
-   // Granted, but under an older consent version (e.g. a legacy pilot user):
-   // the consent text has materially changed, so re-consent is required.
-   if (consent.version !== CONSENT_VERSION) {
-     router.replace('/consent');
-     return;
-   }
-
-   const selected = await loadSelectedChild();
-
-   if (!selected) {
-     router.replace('/profile-setup');
-     return;
-   }
-
-   if (cancelled) return;
-
-   setAccessLimited(false);
-   monitoringRef.current = true;
-   setSelectedChild(selected);
-
-   // Alerting is a bonus on top of the on-screen reading and is opt-in: only set
-   // it up when the user agreed to notifications during consent. A refusal or an
-   // unsupported platform must never stop the risk check from running.
-   try {
-     if (consent.notificationsOptIn) {
-       await applyAlertPreference(true, selected.name);
-     }
-   } catch (err) {
-     console.warn('Notification setup skipped:', err);
-   }
-
-   // The fetch itself is driven by the selectedChild effect below, so switching
-   // children re-runs it for the newly selected child without a double fetch.
- };
-
- initialiseApp();
-
- // Only covers the app being open; the background task carries the same check
- // while it is closed.
- const interval = setInterval(() => {
-   if (!cancelled) checkRisk();
- }, REFRESH_INTERVAL_MS);
-
- return () => {
-   cancelled = true;
-   clearInterval(interval);
- };
-}, [checkRisk]);
-
-
-// Fetches whenever the selected child changes — on first load and every time the
-// user switches child in the hub — so the dashboard always reflects the selected
-// child. Keyed on the id so returning to Home without switching does not refetch.
-useEffect(() => {
- if (selectedChild?.id) checkRisk();
-}, [selectedChild?.id, checkRisk]);
-
-
- const formatUpdated = (iso: string | null) => {
-   if (!iso) return 'Not yet';
-
-   return new Date(iso).toLocaleTimeString([], {
-     hour: '2-digit',
-     minute: '2-digit',
-   });
- };
-
- return (
-  <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <View style={styles.liveRow}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE MONITORING</Text>
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View style={styles.headerTopRow}>
+            <View style={styles.liveRow}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE MONITORING</Text>
+            </View>
+            <Pressable style={styles.settingsButton} onPress={() => router.push('/settings')} hitSlop={8} accessibilityLabel="Settings">
+              <Ionicons name="settings-outline" size={22} color="#334155" />
+            </Pressable>
           </View>
 
-          <Pressable
-            style={styles.settingsButton}
-            onPress={() => router.push('/settings')}
-            accessibilityRole="button"
-            accessibilityLabel="Settings"
-            hitSlop={8}
-          >
-            <Ionicons name="settings-outline" size={22} color="#334155" />
-          </Pressable>
+          <Text style={styles.title}>Environmental{'\n'}Intelligence</Text>
+          <Text style={styles.subtitle}>Real-time environmental risk monitoring for children&apos;s health and safety.</Text>
         </View>
 
-        {!accessLimited && (
-          <View style={styles.aiBadgeInline}>
-            <Ionicons name="shield-checkmark-outline" size={17} color="#1FAE9B" />
-            <Text style={styles.aiBadgeText}>AI Monitoring Active</Text>
-          </View>
-        )}
+        <DisclaimerBanner style={styles.disclaimer} />
 
-        <Text style={styles.title}>Environmental{"\n"}Intelligence</Text>
-
-        <Text style={styles.subtitle}>
-          Real-time environmental risk monitoring for children&apos;s health and safety.
-        </Text>
-
-        </View>
-
-      <DisclaimerBanner style={styles.disclaimer} />
-
-      {accessLimited ? (
-        <View style={styles.limitedCard}>
-          <View style={styles.limitedIcon}>
-            <Ionicons name="lock-closed-outline" size={30} color="#B45309" />
-          </View>
-
-          <Text style={styles.limitedTitle}>Personalised features are locked</Text>
-          <Text style={styles.limitedBody}>
-            Child profiles, environmental risk assessments, and alerts require your consent.
-            Provide consent to enable live monitoring for your child.
-          </Text>
-
-          <Pressable style={styles.limitedPrimary} onPress={() => router.push('/consent')}>
-            <Text style={styles.limitedPrimaryText}>Review Consent</Text>
-          </Pressable>
-
-          <Pressable style={styles.limitedSecondary} onPress={() => router.push('/settings')}>
-            <Text style={styles.limitedSecondaryText}>Open Settings</Text>
-          </Pressable>
-        </View>
-      ) : (
-       <>
+        {/* Status strip */}
         <View style={styles.statusStrip}>
           <View style={styles.statusItem}>
             <View style={styles.statusIcon}>
-              <MaterialCommunityIcons name="dots-circle" size={22} color="#2F6BFF" />
+              <MaterialCommunityIcons name="weather-hazy" size={22} color="#2F6BFF" />
             </View>
-
             <View style={{ flex: 1 }}>
-              <Text style={styles.statusMain}>
-                AQI {result?.environment?.aqi ?? '--'}
-              </Text>
-              <Text
-                style={[
-                  styles.aqiText,
-                  { color: aqiColour(result?.environment?.aqi) },
-                ]}
-              >
-                {aqiLevel(result?.environment?.aqi).toUpperCase()}
-              </Text>
+              <Text style={styles.statusMain}>AQI {env.aqi ?? '--'}</Text>
+              <Text style={[styles.aqiText, { color: aqiColour(env.aqi) }]}>{aqiLevel(env.aqi).toUpperCase()}</Text>
             </View>
           </View>
-
           <View style={styles.statusDivider} />
-
           <View style={styles.statusItem}>
             <View style={styles.statusIcon}>
               <Ionicons name="sync-outline" size={22} color="#2F6BFF" />
             </View>
-
             <View>
-              <Text style={styles.statusMain}>
-                {loading ? 'Checking' : isStale ? 'Offline' : 'Live'}
-              </Text>
-              <Text style={styles.statusSub}>{formatUpdated(lastUpdated)}</Text>
+              <Text style={styles.statusMain}>{loading ? 'Checking' : 'Live'}</Text>
+              <Text style={styles.statusSub}>{formatUpdated(updatedAt)}</Text>
             </View>
           </View>
         </View>
 
-      {error && (
-        <View style={styles.errorBanner}>
-          <Ionicons name="warning-outline" size={20} color="#B91C1C" />
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-
-      {isStale && result && (
-        <View style={styles.staleBanner}>
-          <Ionicons name="cloud-offline-outline" size={20} color="#92400E" />
-          <Text style={styles.staleText}>
-            Showing last known data from {formatUpdated(lastUpdated)}. Conditions may have changed.
-          </Text>
-        </View>
-      )}
-
-      {selectedChild && (
-        <Pressable
-          style={styles.childCard}
-          onPress={() => router.push('/children')}
-          accessibilityRole="button"
-          accessibilityLabel="Switch or manage children"
-        >
-          <View style={styles.avatarCircle}>
-            <Ionicons name="person" size={30} color="#2F6B9A" />
-          </View>
-
-          <View style={styles.childInfo}>
-            <Text
-              style={styles.childName}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.75}
-              ellipsizeMode="tail"
-            >
-              {selectedChild.name}
-            </Text>
-
-            <Text style={styles.childAge} numberOfLines={1}>
-              {selectedChild.age} {selectedChild.age === 1 ? 'year' : 'years'} old
-            </Text>
-
-            <View style={styles.monitorRow}>
-              <View style={styles.smallGreenDot} />
-              <Text style={styles.monitorText}>Monitoring active</Text>
+        {/* Child switcher card */}
+        {child && (
+          <Pressable style={styles.childCard} onPress={() => router.push('/children')} accessibilityLabel="Switch or manage children">
+            <View style={styles.avatarCircle}>
+              <Ionicons name="person" size={30} color="#2F6B9A" />
             </View>
-
-            <View style={styles.switchHintRow}>
-              <Ionicons name="swap-horizontal" size={13} color="#2F6BFF" />
-              <Text style={styles.switchHint}>Tap to switch or add children</Text>
-            </View>
-          </View>
-
-          <Pressable
-            style={styles.editButton}
-            onPress={() => router.push('/edit-profile')}
-            accessibilityRole="button"
-            accessibilityLabel="Edit child profile"
-          >
-            <Ionicons name="create-outline" size={18} color="#2F6BFF" />
-            <Text style={styles.editText}>Edit</Text>
-          </Pressable>
-        </Pressable>
-      )}
-
-      <Pressable
-        style={styles.checkButton}
-        onPress={() => {
-          if (!selectedChild) {
-            alert('Please complete child profile first.');
-            return;
-          }
-
-          checkRisk();
-        }}
-      >
-        <Text style={styles.checkButtonText}>
-          {loading ? 'Checking...' : 'Check Current Risk'}
-        </Text>
-      </Pressable>
-
-      {result && (
-        <View style={styles.section}>
-          <View
-            style={[
-              styles.riskHero,
-              { backgroundColor: riskBg(result.priority_alert) },
-            ]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.riskLabel}>Environmental Risk</Text>
-              <Text
-                style={[
-                  styles.riskLevel,
-                  { color: riskText(result.priority_alert) },
-                ]}
-              >
-                {result.priority_alert ? result.priority_alert.toUpperCase() : 'UNKNOWN'}
+            <View style={styles.childInfo}>
+              <Text style={styles.childName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+                {childDisplayName(child)}
               </Text>
-              <Text style={styles.riskDescription}>{result.action}</Text>
-            </View>
-
-            <View
-              style={[
-                styles.riskRing,
-                {
-                  borderColor: riskRing(result.priority_alert).border,
-                  backgroundColor: riskRing(result.priority_alert).fill,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.riskNumber,
-                  { color: riskText(result.priority_alert) },
-                ]}
-              >
-                {elevatedDomains(result.risks).elevated}
-                <Text style={styles.riskOutOf}>
-                  /{elevatedDomains(result.risks).total}
-                </Text>
+              <Text style={styles.childAge} numberOfLines={1}>
+                {child.age} {child.age === 1 ? 'year' : 'years'} · {ageGroupLabel(ageGroup(child.age))}
               </Text>
-              <Text style={styles.riskOutOf}>elevated</Text>
+              <View style={styles.switchHintRow}>
+                <Ionicons name="swap-horizontal" size={13} color="#2F6BFF" />
+                <Text style={styles.switchHint}>Tap to switch or add children</Text>
+              </View>
             </View>
-          </View>
-
-          <View style={styles.domainRow}>
-            <RiskCard title="Heat Stress" value={result.risks.heat_stress} icon="thermometer" />
-            <RiskCard title="Respiratory" value={result.risks.respiratory} icon="lungs" />
-            <RiskCard title="Dengue" value={result.risks.dengue} icon="bug-outline" />
-          </View>
-
-          <View style={styles.dataCard}>
-            <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Live Environmental Data</Text>
-
-            <Pressable onPress={() => router.push('/map')}>
-              <Text style={styles.mapLink}>View on Map ›</Text>
+            <Pressable style={styles.editButton} onPress={() => router.push(`/child-form?childId=${child.id}`)} accessibilityLabel="Edit child">
+              <Ionicons name="create-outline" size={18} color="#2F6BFF" />
+              <Text style={styles.editText}>Edit</Text>
             </Pressable>
+          </Pressable>
+        )}
+
+        <Pressable style={styles.checkButton} onPress={() => loadRisk()}>
+          <Text style={styles.checkButtonText}>{loading ? 'Checking…' : 'Check Current Risk'}</Text>
+        </Pressable>
+
+        {error && (
+          <View style={styles.errorBanner}>
+            <Ionicons name="warning-outline" size={20} color="#B91C1C" />
+            <Text style={styles.errorText}>{error}</Text>
           </View>
+        )}
 
-            <View style={styles.metricRow}>
-              <Metric icon="thermometer" value={`${result.environment.temperature}°C`} label="Temperature" />
-              <Metric icon="water-outline" value={`${result.environment.humidity}%`} label="Humidity" />
-              <Metric icon="rainy-outline" value={`${result.environment.rainfall} mm`} label="Rainfall" />
-              <Metric icon="ellipse-outline" value={`${result.environment.pm2_5} µg/m³`} label="PM2.5" />
-            </View>
-          </View>
-
-          <View style={styles.vulnerabilityCard}>
-            <View style={styles.shieldCircle}>
-              <Ionicons name="shield-checkmark-outline" size={26} color="#1FAE9B" />
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cardTitle}>Child Vulnerability Status</Text>
-              <Text
-                style={[
-                  styles.vulnerabilityLevel,
-                  { color: riskText(result.child_vulnerability?.level) },
-                ]}
-              >
-                {result.child_vulnerability?.level?.toUpperCase() ?? 'UNKNOWN'}
-              </Text>
-            </View>
-
-            <View style={{ flex: 1 }}>
-              {result.child_vulnerability?.reasons?.length ? (
-                result.child_vulnerability.reasons.map((reason: string, index: number) => (
-                  <Text key={index} style={styles.vulnerabilityReason}>
-                    • {reason}
-                  </Text>
-                ))
-              ) : (
-                <Text style={styles.vulnerabilityReason}>
-                  No additional vulnerability indicators detected.
+        {result && (
+          <View style={styles.section}>
+            <View style={[styles.riskHero, { backgroundColor: riskBg(result.overall_risk) }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.riskLabel}>Environmental Risk</Text>
+                <Text style={[styles.riskLevel, { color: riskText(result.overall_risk) }]}>
+                  {result.overall_risk?.toUpperCase() ?? 'UNKNOWN'}
                 </Text>
-              )}
+                <Text style={styles.riskDescription}>
+                  {result.primary_hazards?.length ? `Primary: ${result.primary_hazards.join(', ')}` : 'No major hazards detected.'}
+                </Text>
+              </View>
+              <View style={[styles.riskRing, { borderColor: riskRing(result.overall_risk).border, backgroundColor: riskRing(result.overall_risk).fill }]}>
+                <Text style={[styles.riskNumber, { color: riskText(result.overall_risk) }]}>
+                  {elevated}
+                  <Text style={styles.riskOutOf}>/{total}</Text>
+                </Text>
+                <Text style={styles.riskOutOf}>elevated</Text>
+              </View>
             </View>
-          </View>
 
-          {selectedChild && (
+            <View style={styles.domainRow}>
+              <RiskCard title="Heat Stress" value={risks.heat_stress} icon="thermometer" />
+              <RiskCard title="Respiratory" value={risks.respiratory} icon="lungs" />
+              <RiskCard title="Dengue" value={risks.dengue} icon="bug-outline" />
+            </View>
+
+            <View style={styles.dataCard}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>Live Environmental Data</Text>
+                <Pressable onPress={() => router.push('/map')}>
+                  <Text style={styles.mapLink}>View on Map ›</Text>
+                </Pressable>
+              </View>
+              <View style={styles.metricRow}>
+                <Metric icon="thermometer" value={`${env.temperature ?? '—'}°C`} label="Temperature" />
+                <Metric icon="water-outline" value={`${env.humidity ?? '—'}%`} label="Humidity" />
+                <Metric icon="rainy-outline" value={`${env.rainfall ?? '—'} mm`} label="Rainfall" />
+                <Metric icon="ellipse-outline" value={`${env.pm2_5 ?? '—'}`} label="PM2.5" />
+              </View>
+            </View>
+
             <View style={styles.actionCard}>
               <Text style={styles.cardTitle}>Personalised Recommendations</Text>
               <Text style={styles.actionSubtitle}>
-                Tailored to {selectedChild.name}&apos;s age, symptoms, conditions and today&apos;s exposure
+                Tailored to {childDisplayName(child ?? ({ name: 'your child' } as ServerChild))}&apos;s profile and today&apos;s conditions
               </Text>
-
-              <PersonalisedRecommendations
-                items={generateRecommendations(selectedChild, result, history)}
-              />
-            </View>
-          )}
-
-          <Pressable style={styles.shareButton} onPress={shareAlert}>
-            <View style={styles.shareIcon}>
-              <Ionicons name="paper-plane-outline" size={22} color="#FFFFFF" />
+              <ServerRecommendations result={result} />
             </View>
 
-            <View style={{ flex: 1 }}>
-              <Text style={styles.shareTitle}>Share Alert Summary</Text>
-              <Text style={styles.shareSub}>
-                Send this report to caregivers or health professionals
-              </Text>
-            </View>
-
-            <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
-          </Pressable>
-        </View>
-      )}
-       </>
-      )}
-    </ScrollView>
-  </SafeAreaView>
-);
+            <Pressable style={styles.shareButton} onPress={shareAlert}>
+              <View style={styles.shareIcon}>
+                <Ionicons name="paper-plane-outline" size={22} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.shareTitle}>Share Alert Summary</Text>
+                <Text style={styles.shareSub}>Send this report to caregivers or health professionals</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
+            </Pressable>
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
-function RiskCard({ title, value, icon }: any) {
-  const colour = riskText(value);
-  const bgColour = riskBg(value);
-
+function RiskCard({ title, value, icon }: { title: string; value?: string; icon: any }) {
+  const level = (value === 'high' || value === 'moderate' ? value : 'low') as RiskLevel;
+  const colour = riskText(level);
   return (
     <View style={styles.riskCard}>
-      <View style={[styles.domainIcon, { backgroundColor: bgColour }]}>
+      <View style={[styles.domainIcon, { backgroundColor: riskBg(level) }]}>
         <MaterialCommunityIcons name={icon} size={25} color={colour} />
       </View>
-
       <Text style={styles.riskTitle}>{title}</Text>
-      <Text style={[styles.riskValue, { color: colour }]}>
-        {value?.toUpperCase() ?? 'UNKNOWN'}
-      </Text>
+      <Text style={[styles.riskValue, { color: colour }]}>{value?.toUpperCase() ?? 'UNKNOWN'}</Text>
       <Text style={styles.domainScore}>Risk domain</Text>
-
       <View style={[styles.sparkLine, { backgroundColor: colour }]} />
     </View>
   );
 }
 
-function Metric({ icon, value, label }: any) {
+function Metric({ icon, value, label }: { icon: any; value: string; label: string }) {
   return (
     <View style={styles.metricCard}>
       <Ionicons name={icon} size={21} color="#2F6B9A" />
@@ -567,525 +311,67 @@ function Metric({ icon, value, label }: any) {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#F5F8FC',
-  },
-  screen: {
-    flex: 1,
-    backgroundColor: '#F5F8FC',
-  },
-  container: {
-    paddingHorizontal: 24,
-    paddingTop: 34,
-    paddingBottom: 130,
-  },
-  header: {
-    position: 'relative',
-    marginBottom: 20,
-  },
-  disclaimer: {
-    marginBottom: 18,
-  },
-  liveRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#36D399',
-    marginRight: 8,
-  },
-  liveText: {
-    color: '#245DCC',
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  headerTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  settingsButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5EAF2',
-  },
-  aiBadgeInline: {
-    alignSelf: 'flex-start',
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: '#E5EAF2',
-  },
-  limitedCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#F0D9A8',
-  },
-  limitedIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#FEF3C7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  limitedTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#101828',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  limitedBody: {
-    fontSize: 14,
-    color: '#667085',
-    lineHeight: 21,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  limitedPrimary: {
-    alignSelf: 'stretch',
-    backgroundColor: '#2F6BFF',
-    borderRadius: 18,
-    paddingVertical: 15,
-  },
-  limitedPrimaryText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  limitedSecondary: {
-    alignSelf: 'stretch',
-    marginTop: 10,
-    borderRadius: 18,
-    paddingVertical: 14,
-    borderWidth: 1.5,
-    borderColor: '#D0D9E6',
-  },
-  limitedSecondaryText: {
-    color: '#475569',
-    fontSize: 15,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  aiBadgeText: {
-    color: '#1FAE9B',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  title: {
-    color: '#101828',
-    fontSize: 42,
-    lineHeight: 46,
-    fontWeight: '900',
-    letterSpacing: -1.3,
-    marginTop: 8,
-  },
-  subtitle: {
-    color: '#667085',
-    fontSize: 16,
-    lineHeight: 24,
-    marginTop: 16,
-    maxWidth: 310,
-  },
-  statusStrip: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    paddingVertical: 16,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
-    marginBottom: 18,
-  },
-  statusItem: {
-    flex: 1,
-     justifyContent: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  statusIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F0F5FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: '#D7DEE8',
-    marginHorizontal: 8,
-  },
-  statusMain: {
-    color: '#101828',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  statusSub: {
-    color: '#7A8496',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  aqiText: {
-    fontSize: 12,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#FEE2E2',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-  },
-  errorText: {
-    flex: 1,
-    color: '#B91C1C',
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  staleBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#FEF3C7',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#FCD34D',
-  },
-  staleText: {
-    flex: 1,
-    color: '#92400E',
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  childCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
-    marginBottom: 18,
-  },
-  avatarCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#DCEEFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  childInfo: {
-    flex: 1,
-    // minWidth:0 lets the flex child shrink so the single-line name can scale /
-    // ellipsize instead of forcing the row wider (also required on web).
-    minWidth: 0,
-  },
-  childName: {
-    color: '#101828',
-    fontSize: 20,
-    lineHeight: 24,
-    fontWeight: '900',
-  },
-  childAge: {
-    color: '#667085',
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 1,
-  },
-  monitorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  smallGreenDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#1FAE9B',
-    marginRight: 7,
-  },
-  monitorText: {
-    color: '#168C6E',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  switchHintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 6,
-  },
-  switchHint: {
-    color: '#2F6BFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  editButton: {
-    backgroundColor: '#EEF5FF',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    // Keep its intrinsic width so it never squeezes the name column.
-    flexShrink: 0,
-  },
-  editText: {
-    color: '#2F6BFF',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  checkButton: {
-    backgroundColor: '#101828',
-    borderRadius: 22,
-    paddingVertical: 18,
-    marginBottom: 20,
-  },
-  checkButtonText: {
-    color: '#FFFFFF',
-    textAlign: 'center',
-    fontSize: 17,
-    fontWeight: '900',
-  },
-  section: {
-    gap: 16,
-  },
-  riskHero: {
-    borderRadius: 24,
-    padding: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  riskLabel: {
-    color: '#667085',
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  riskLevel: {
-    fontSize: 34,
-    fontWeight: '900',
-    marginTop: 8,
-  },
-  riskDescription: {
-    color: '#667085',
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 6,
-    maxWidth: 210,
-  },
-  riskRing: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 10,
-    borderColor: '#BEEFD0',
-    backgroundColor: '#EDFFF4',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  riskNumber: {
-    fontSize: 32,
-    fontWeight: '900',
-  },
-  riskOutOf: {
-    color: '#667085',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  domainRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  riskCard: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 13,
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
-  },
-  domainIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  riskTitle: {
-    color: '#101828',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  riskValue: {
-    fontSize: 18,
-    fontWeight: '900',
-    marginTop: 2,
-  },
-  domainScore: {
-    color: '#667085',
-    fontSize: 11,
-    marginTop: 3,
-  },
-  sparkLine: {
-    height: 3,
-    borderRadius: 3,
-    opacity: 0.55,
-    marginTop: 10,
-  },
-  dataCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  cardTitle: {
-    color: '#101828',
-    fontSize: 17,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  mapLink: {
-    color: '#2F6BFF',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  metricRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  metricCard: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
-  },
-  metricValue: {
-    color: '#101828',
-    fontSize: 15,
-    fontWeight: '900',
-    marginTop: 8,
-  },
-  metricLabel: {
-    color: '#667085',
-    fontSize: 10,
-    marginTop: 6,
-  },
-  vulnerabilityCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
-  },
-  shieldCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#E3F8EA',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  vulnerabilityLevel: {
-    color: '#28764D',
-    fontSize: 20,
-    fontWeight: '900',
-    marginTop: 4,
-  },
-  vulnerabilityReason: {
-    color: '#667085',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  actionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
-  },
-  actionSubtitle: {
-    color: '#667085',
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 2,
-    marginBottom: 14,
-  },
-  shareButton: {
-    backgroundColor: '#2F55E7',
-    borderRadius: 22,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  shareIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shareTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  shareSub: {
-    color: '#DDE6FF',
-    fontSize: 12,
-    marginTop: 3,
-  },
+  safe: { flex: 1, backgroundColor: '#F5F8FC' },
+  center: { alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { color: '#4B5563', fontSize: 15 },
+  screen: { flex: 1, backgroundColor: '#F5F8FC' },
+  container: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 130 },
+  header: { marginBottom: 16 },
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  liveRow: { flexDirection: 'row', alignItems: 'center' },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#36D399', marginRight: 8 },
+  liveText: { color: '#245DCC', fontSize: 13, fontWeight: '900', letterSpacing: 0.5 },
+  settingsButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E5EAF2' },
+  title: { color: '#101828', fontSize: 42, lineHeight: 46, fontWeight: '900', letterSpacing: -1.3, marginTop: 14 },
+  subtitle: { color: '#667085', fontSize: 16, lineHeight: 24, marginTop: 16, maxWidth: 310 },
+  disclaimer: { marginBottom: 18 },
+  statusStrip: { backgroundColor: '#FFFFFF', borderRadius: 22, paddingVertical: 16, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E6EBF2', marginBottom: 18 },
+  statusItem: { flex: 1, justifyContent: 'center', flexDirection: 'row', alignItems: 'center', gap: 8 },
+  statusIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F0F5FF', alignItems: 'center', justifyContent: 'center' },
+  statusDivider: { width: 1, height: 40, backgroundColor: '#D7DEE8', marginHorizontal: 8 },
+  statusMain: { color: '#101828', fontSize: 13, fontWeight: '900' },
+  statusSub: { color: '#7A8496', fontSize: 12, marginTop: 2 },
+  aqiText: { fontSize: 12, fontWeight: '800', marginTop: 2 },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FEE2E2', borderRadius: 16, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: '#FCA5A5' },
+  errorText: { flex: 1, color: '#B91C1C', fontSize: 13, fontWeight: '700', lineHeight: 18 },
+  childCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 16, borderWidth: 1, borderColor: '#E6EBF2', marginBottom: 18 },
+  avatarCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#DCEEFF', alignItems: 'center', justifyContent: 'center' },
+  childInfo: { flex: 1, minWidth: 0 },
+  childName: { color: '#101828', fontSize: 20, lineHeight: 24, fontWeight: '900' },
+  childAge: { color: '#667085', fontSize: 13, fontWeight: '700', marginTop: 1 },
+  switchHintRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
+  switchHint: { color: '#2F6BFF', fontSize: 12, fontWeight: '700' },
+  editButton: { backgroundColor: '#EEF5FF', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  editText: { color: '#2F6BFF', fontSize: 13, fontWeight: '900' },
+  checkButton: { backgroundColor: '#101828', borderRadius: 22, paddingVertical: 18, marginBottom: 20 },
+  checkButtonText: { color: '#FFFFFF', textAlign: 'center', fontSize: 17, fontWeight: '900' },
+  section: { gap: 16 },
+  riskHero: { borderRadius: 24, padding: 22, flexDirection: 'row', alignItems: 'center' },
+  riskLabel: { color: '#667085', fontSize: 15, fontWeight: '900' },
+  riskLevel: { fontSize: 34, fontWeight: '900', marginTop: 8 },
+  riskDescription: { color: '#667085', fontSize: 14, lineHeight: 20, marginTop: 6, maxWidth: 210 },
+  riskRing: { width: 96, height: 96, borderRadius: 48, borderWidth: 10, alignItems: 'center', justifyContent: 'center' },
+  riskNumber: { fontSize: 32, fontWeight: '900' },
+  riskOutOf: { color: '#667085', fontSize: 13, fontWeight: '800' },
+  domainRow: { flexDirection: 'row', gap: 10 },
+  riskCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 18, padding: 13, borderWidth: 1, borderColor: '#E6EBF2' },
+  domainIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  riskTitle: { color: '#101828', fontSize: 13, fontWeight: '900' },
+  riskValue: { fontSize: 18, fontWeight: '900', marginTop: 2 },
+  domainScore: { color: '#667085', fontSize: 11, marginTop: 3 },
+  sparkLine: { height: 3, borderRadius: 3, opacity: 0.55, marginTop: 10 },
+  dataCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 18, borderWidth: 1, borderColor: '#E6EBF2' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  cardTitle: { color: '#101828', fontSize: 17, fontWeight: '900', marginBottom: 4 },
+  mapLink: { color: '#2F6BFF', fontSize: 14, fontWeight: '800' },
+  metricRow: { flexDirection: 'row', gap: 10 },
+  metricCard: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#E6EBF2' },
+  metricValue: { color: '#101828', fontSize: 15, fontWeight: '900', marginTop: 8 },
+  metricLabel: { color: '#667085', fontSize: 10, marginTop: 6 },
+  actionCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 18, borderWidth: 1, borderColor: '#E6EBF2' },
+  actionSubtitle: { color: '#667085', fontSize: 13, lineHeight: 19, marginTop: 2, marginBottom: 14 },
+  shareButton: { backgroundColor: '#2F55E7', borderRadius: 22, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  shareIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
+  shareTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
+  shareSub: { color: '#DDE6FF', fontSize: 12, marginTop: 3 },
 });

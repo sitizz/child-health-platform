@@ -1,79 +1,93 @@
 import { useState } from 'react';
 import {
-  Text,
-  View,
+  ActivityIndicator,
   Pressable,
-  StyleSheet,
   ScrollView,
+  StyleSheet,
   Switch,
+  Text,
   TextInput,
+  View,
 } from 'react-native';
 import { router } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AGE_MAX, AGE_MIN, getAgeGroup, parseAge } from '@/lib/profile';
+import { ApiError } from '@/lib/api';
+import { createChild } from '@/lib/children-api';
+import { routeForGateError } from '@/lib/gate';
+import { registerPushDevice } from '@/lib/push';
+
+const AGE_MIN = 0;
+const AGE_MAX = 18;
+
+type Flags = {
+  asthma: boolean;
+  fever: boolean;
+  cough: boolean;
+  dehydration: boolean;
+  mosquito_exposure: boolean;
+  flood_exposure: boolean;
+};
+
+function parseAge(raw: string): number | null {
+  const n = Number(raw);
+  if (!raw.trim() || !Number.isInteger(n) || n < AGE_MIN || n > AGE_MAX) return null;
+  return n;
+}
 
 export default function ProfileSetupScreen() {
   const insets = useSafeAreaInsets();
-  const [caregiverName, setCaregiverName] = useState('');
-  const [caregiverPhone, setCaregiverPhone] = useState('');
-  const [caregiverLocation, setCaregiverLocation] = useState('');
+  const [name, setName] = useState('');
+  const [age, setAge] = useState('');
+  const [flags, setFlags] = useState<Flags>({
+    asthma: false,
+    fever: false,
+    cough: false,
+    dehydration: false,
+    mosquito_exposure: false,
+    flood_exposure: false,
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [childName, setChildName] = useState('');
-  const [childAge, setChildAge] = useState('');
+  const setFlag = (key: keyof Flags, value: boolean) => setFlags((p) => ({ ...p, [key]: value }));
 
-  const [asthma, setAsthma] = useState(false);
-  const [fever, setFever] = useState(false);
-  const [cough, setCough] = useState(false);
-  const [dehydration, setDehydration] = useState(false);
-  const [mosquitoExposure, setMosquitoExposure] = useState(false);
-  const [floodExposure, setFloodExposure] = useState(false);
+  const save = async () => {
+    if (busy) return;
+    setError(null);
 
-  const saveProfile = async () => {
-    if (!caregiverName.trim() || !childName.trim() || !childAge.trim()) {
-      alert('Please add caregiver name, child name, and child age.');
+    if (!name.trim()) {
+      setError("Please enter the child's name.");
       return;
     }
-
-    // Number('abc') is NaN, which previously fell through getAgeGroup to
-    // 'adolescent' and risk-scored a toddler as a teenager.
-    const ageNumber = parseAge(childAge);
-
+    const ageNumber = parseAge(age);
     if (ageNumber === null) {
-      alert(`Please enter the child's age as a whole number between ${AGE_MIN} and ${AGE_MAX}.`);
+      setError(`Please enter an age between ${AGE_MIN} and ${AGE_MAX}.`);
       return;
     }
 
-    const childId = Date.now().toString();
+    setBusy(true);
+    try {
+      await createChild({
+        name: name.trim(),
+        age: ageNumber,
+        conditions: { asthma: flags.asthma },
+        symptoms: { fever: flags.fever, cough: flags.cough, dehydration: flags.dehydration },
+        exposures: { mosquito_exposure: flags.mosquito_exposure, flood_exposure: flags.flood_exposure },
+        is_selected: true,
+      });
 
-    const profile = {
-      caregiver: {
-        name: caregiverName,
-        phone: caregiverPhone,
-        location: caregiverLocation,
-      },
-      children: [
-        {
-          id: childId,
-          name: childName,
-          age: ageNumber,
-          age_group: getAgeGroup(ageNumber),
-          asthma,
-          fever,
-          cough,
-          dehydration,
-          mosquito_exposure: mosquitoExposure,
-          flood_exposure: floodExposure,
-        },
-      ],
-      selectedChildId: childId,
-      profile_completed: true,
-    };
+      // Register for push now that consent + a child exist (best effort).
+      registerPushDevice().catch(() => {});
 
-    await AsyncStorage.setItem('caregiverProfile', JSON.stringify(profile));
-
-    router.replace('/');
+      router.replace('/');
+    } catch (err) {
+      if (routeForGateError(err)) return;
+      setError(err instanceof ApiError ? err.message : 'Unable to save. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -84,159 +98,62 @@ export default function ProfileSetupScreen() {
       ]}
     >
       <Text style={styles.badge}>Profile Setup</Text>
-
-      <Text style={styles.title}>Create Caregiver & Child Profile</Text>
-
+      <Text style={styles.title}>Add Your Child</Text>
       <Text style={styles.subtitle}>
-        This helps personalise alerts for the right child while keeping the app ready for multiple children later.
+        This personalises environmental risk guidance. You can add more children later.
       </Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Caregiver Information</Text>
-
-        <TextInput
-          style={styles.input}
-          placeholder="Caregiver name"
-          value={caregiverName}
-          onChangeText={setCaregiverName}
-        />
-
-        <TextInput
-          style={styles.input}
-          placeholder="Phone number"
-          value={caregiverPhone}
-          onChangeText={setCaregiverPhone}
-          keyboardType="phone-pad"
-        />
-
-        <TextInput
-          style={styles.input}
-          placeholder="Location / area"
-          value={caregiverLocation}
-          onChangeText={setCaregiverLocation}
-        />
-      </View>
-
-      <View style={styles.card}>
         <Text style={styles.cardTitle}>Child Information</Text>
-
-        <TextInput
-          style={styles.input}
-          placeholder="Child name"
-          value={childName}
-          onChangeText={setChildName}
-        />
-
-        <TextInput
-          style={styles.input}
-          placeholder="Child age"
-          value={childAge}
-          onChangeText={setChildAge}
-          keyboardType="numeric"
-        />
+        <TextInput style={styles.input} placeholder="Child name" placeholderTextColor="#94A3B8" value={name} onChangeText={setName} />
+        <TextInput style={styles.input} placeholder="Child age" placeholderTextColor="#94A3B8" value={age} onChangeText={setAge} keyboardType="numeric" />
       </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Child Risk Factors</Text>
-
-        <ProfileRow label="Asthma history" value={asthma} onValueChange={setAsthma} />
-        <ProfileRow label="Fever symptoms" value={fever} onValueChange={setFever} />
-        <ProfileRow label="Cough or wheezing" value={cough} onValueChange={setCough} />
-        <ProfileRow label="Dehydration symptoms" value={dehydration} onValueChange={setDehydration} />
-        <ProfileRow label="Mosquito exposure" value={mosquitoExposure} onValueChange={setMosquitoExposure} />
-        <ProfileRow label="Recent flood exposure" value={floodExposure} onValueChange={setFloodExposure} />
+        <FlagRow icon="lungs" label="Asthma history" value={flags.asthma} onChange={(v) => setFlag('asthma', v)} />
+        <FlagRow icon="thermometer" label="Fever symptoms" value={flags.fever} onChange={(v) => setFlag('fever', v)} />
+        <FlagRow icon="weather-windy" label="Cough or wheezing" value={flags.cough} onChange={(v) => setFlag('cough', v)} />
+        <FlagRow icon="cup-water" label="Dehydration symptoms" value={flags.dehydration} onChange={(v) => setFlag('dehydration', v)} />
+        <FlagRow icon="bug" label="Mosquito exposure" value={flags.mosquito_exposure} onChange={(v) => setFlag('mosquito_exposure', v)} />
+        <FlagRow icon="waves-arrow-up" label="Recent flood exposure" value={flags.flood_exposure} onChange={(v) => setFlag('flood_exposure', v)} last />
       </View>
 
-      <Pressable style={styles.button} onPress={saveProfile}>
-        <Text style={styles.buttonText}>Save Profile & Continue</Text>
+      {error && <Text style={styles.error}>{error}</Text>}
+
+      <Pressable style={[styles.button, busy && styles.buttonDisabled]} onPress={save} disabled={busy}>
+        {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Save & Continue</Text>}
       </Pressable>
     </ScrollView>
   );
 }
 
-function ProfileRow({ label, value, onValueChange }: any) {
+function FlagRow({ icon, label, value, onChange, last }: { icon: any; label: string; value: boolean; onChange: (v: boolean) => void; last?: boolean }) {
   return (
-    <View style={styles.profileRow}>
-      <Text style={styles.profileLabel}>{label}</Text>
-      <Switch value={value} onValueChange={onValueChange} />
+    <View style={[styles.flagRow, !last && styles.flagRowDivider]}>
+      <View style={styles.flagIcon}>
+        <MaterialCommunityIcons name={icon} size={20} color="#2F6BFF" />
+      </View>
+      <Text style={styles.flagLabel}>{label}</Text>
+      <Switch value={value} onValueChange={onChange} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 24,
-    backgroundColor: '#F8FAFC',
-    minHeight: '100%',
-  },
-  badge: {
-    alignSelf: 'center',
-    backgroundColor: '#E0F2FE',
-    color: '#0369A1',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    fontWeight: '600',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: '900',
-    textAlign: 'center',
-    color: '#0F172A',
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    color: '#64748B',
-    marginBottom: 28,
-    lineHeight: 23,
-  },
-  card: {
-    backgroundColor: 'white',
-    padding: 18,
-    borderRadius: 22,
-    marginBottom: 18,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 12,
-    color: '#0F172A',
-  },
-  input: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    fontSize: 15,
-  },
-  profileRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  profileLabel: {
-    fontSize: 15,
-    color: '#0F172A',
-    fontWeight: '600',
-    flex: 1,
-    paddingRight: 12,
-  },
-  button: {
-    backgroundColor: '#0F172A',
-    paddingVertical: 16,
-    borderRadius: 18,
-    marginTop: 6,
-  },
-  buttonText: {
-    color: 'white',
-    textAlign: 'center',
-    fontWeight: '800',
-    fontSize: 16,
-  },
+  container: { paddingHorizontal: 24, backgroundColor: '#F8FAFC', minHeight: '100%' },
+  badge: { alignSelf: 'center', backgroundColor: '#E0F2FE', color: '#0369A1', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999, fontWeight: '700', marginBottom: 16, overflow: 'hidden' },
+  title: { fontSize: 30, fontWeight: '900', textAlign: 'center', color: '#0F172A', marginBottom: 12 },
+  subtitle: { fontSize: 16, textAlign: 'center', color: '#64748B', marginBottom: 28, lineHeight: 23 },
+  card: { backgroundColor: 'white', padding: 18, borderRadius: 22, marginBottom: 18, borderWidth: 1, borderColor: '#E6EBF2' },
+  cardTitle: { fontSize: 18, fontWeight: '800', marginBottom: 12, color: '#0F172A' },
+  input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 14, padding: 14, marginBottom: 12, fontSize: 15, color: '#101828' },
+  flagRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  flagRowDivider: { borderBottomWidth: 1, borderBottomColor: '#EEF2F7' },
+  flagIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#EEF5FF', alignItems: 'center', justifyContent: 'center' },
+  flagLabel: { flex: 1, fontSize: 15, color: '#334155', fontWeight: '600' },
+  error: { color: '#B91C1C', fontSize: 13, fontWeight: '700', marginBottom: 12 },
+  button: { backgroundColor: '#0F172A', paddingVertical: 16, borderRadius: 18, marginTop: 6, alignItems: 'center' },
+  buttonDisabled: { backgroundColor: '#94A3B8' },
+  buttonText: { color: 'white', textAlign: 'center', fontWeight: '800', fontSize: 16 },
 });

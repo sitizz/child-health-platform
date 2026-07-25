@@ -7,10 +7,8 @@ const REQUEST_TIMEOUT_MS = 60000;
 
 export type RiskLevel = 'low' | 'moderate' | 'high';
 
-export type ChildProfile = {
-  id: string;
-  name: string;
-  age: number;
+/** The flags the environment-risk endpoint reads. Built from a server child. */
+export type RiskInput = {
   age_group: 'under5' | 'child' | 'adolescent';
   asthma: boolean;
   fever: boolean;
@@ -59,11 +57,13 @@ export type EnvironmentRisk = {
  */
 export class ApiError extends Error {
   status: number;
+  code?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -88,11 +88,11 @@ function messageForStatus(status: number): string {
  * before a request is spent on them.
  */
 function assertUsableProfile(
-  child: ChildProfile | null | undefined
-): asserts child is ChildProfile {
+  input: RiskInput | null | undefined
+): asserts input is RiskInput {
   const valid = ['under5', 'child', 'adolescent'];
 
-  if (!child || !valid.includes(child.age_group)) {
+  if (!input || !valid.includes(input.age_group)) {
     throw new ApiError(
       422,
       'This child profile is incomplete. Please update the age and try again.'
@@ -101,17 +101,17 @@ function assertUsableProfile(
 }
 
 export async function fetchEnvironmentRisk(
-  child: ChildProfile | null | undefined,
+  input: RiskInput | null | undefined,
   lat: number,
   lon: number
 ): Promise<EnvironmentRisk> {
-  assertUsableProfile(child);
+  assertUsableProfile(input);
 
   const query = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
-    age_group: child.age_group,
-    ...childFlagStrings(child),
+    age_group: input.age_group,
+    ...childFlagStrings(input),
   });
 
   const response = await fetchWithTimeout(
@@ -149,23 +149,23 @@ export type BatchResultItem = {
  * (HTTP 200 with `error` set on failed points) rather than failing the whole map.
  */
 export async function fetchEnvironmentRiskBatch(
-  child: ChildProfile | null | undefined,
+  input: RiskInput | null | undefined,
   points: BatchPoint[]
 ): Promise<BatchResultItem[]> {
-  assertUsableProfile(child);
+  assertUsableProfile(input);
 
   const response = await fetchWithTimeout(`${API_URL}/api/v1/environment-risk/batch`, {
     method: 'POST',
     headers: { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       locations: points.map((p) => ({ id: p.id, lat: p.lat, lon: p.lon })),
-      age_group: child.age_group,
-      asthma: !!child.asthma,
-      fever: !!child.fever,
-      cough: !!child.cough,
-      dehydration: !!child.dehydration,
-      mosquito_exposure: !!child.mosquito_exposure,
-      flood_exposure: !!child.flood_exposure,
+      age_group: input.age_group,
+      asthma: !!input.asthma,
+      fever: !!input.fever,
+      cough: !!input.cough,
+      dehydration: !!input.dehydration,
+      mosquito_exposure: !!input.mosquito_exposure,
+      flood_exposure: !!input.flood_exposure,
     }),
   });
 
@@ -182,14 +182,14 @@ export async function fetchEnvironmentRiskBatch(
   return data.results as BatchResultItem[];
 }
 
-function childFlagStrings(child: ChildProfile): Record<string, string> {
+function childFlagStrings(input: RiskInput): Record<string, string> {
   return {
-    asthma: String(!!child.asthma),
-    fever: String(!!child.fever),
-    cough: String(!!child.cough),
-    dehydration: String(!!child.dehydration),
-    mosquito_exposure: String(!!child.mosquito_exposure),
-    flood_exposure: String(!!child.flood_exposure),
+    asthma: String(!!input.asthma),
+    fever: String(!!input.fever),
+    cough: String(!!input.cough),
+    dehydration: String(!!input.dehydration),
+    mosquito_exposure: String(!!input.mosquito_exposure),
+    flood_exposure: String(!!input.flood_exposure),
   };
 }
 

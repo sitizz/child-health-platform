@@ -1,7 +1,30 @@
+import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 export const RISK_ALERT_CHANNEL_ID = 'risk-alerts';
+
+/**
+ * Fetches the Expo push token for server-side push registration. Returns null on
+ * web, in Expo Go, or without a device build — callers treat push as optional.
+ */
+export async function getExpoPushToken(): Promise<string | null> {
+  if (Platform.OS === 'web') return null;
+
+  try {
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      (Constants as any).easConfig?.projectId;
+
+    const { data } = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
+    return data;
+  } catch (err) {
+    console.warn('[notifications] Expo push token unavailable:', err);
+    return null;
+  }
+}
 
 /**
  * Without a handler, expo-notifications does not present notifications that
@@ -43,68 +66,6 @@ async function createRiskChannel() {
     enableVibrate: true,
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
   });
-}
-
-/**
- * Delivers immediately on both platforms. `trigger: null` would deliver on
- * Android's default channel and silently bypass the high-importance channel
- * above, so Android is routed through it explicitly.
- */
-export function immediateTrigger(): Notifications.NotificationTriggerInput {
-  return Platform.OS === 'android' ? { channelId: RISK_ALERT_CHANNEL_ID } : null;
-}
-
-export const DAILY_REMINDER_ID = 'daily-risk-reminder';
-export const DAILY_REMINDER_HOUR = 7;
-export const DAILY_REMINDER_MINUTE = 30;
-
-/**
- * A locally scheduled notification is delivered by the OS without waking the JS
- * context, so it cannot contain a live risk level. It is therefore worded as a
- * prompt to open the app rather than as a risk statement — the alternative would
- * be showing a risk figure that could be hours stale.
- *
- * Rescheduled rather than duplicated: scheduling repeatedly with the same
- * identifier replaces the existing entry instead of stacking reminders.
- */
-export async function scheduleDailyRiskReminder(childName?: string): Promise<boolean> {
-  // Scheduling is unavailable on web and throws there. Callers treat the
-  // reminder as optional, so a failure must not propagate and abort app start-up.
-  try {
-    await Notifications.scheduleNotificationAsync({
-      identifier: DAILY_REMINDER_ID,
-      content: {
-        title: '🛡️ Daily Risk Check',
-        body: childName
-          ? `Check today's environmental risk for ${childName}.`
-          : "Check today's environmental risk for your child.",
-        sound: true,
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour: DAILY_REMINDER_HOUR,
-        minute: DAILY_REMINDER_MINUTE,
-        ...(Platform.OS === 'android' ? { channelId: RISK_ALERT_CHANNEL_ID } : {}),
-      },
-    });
-
-    return true;
-  } catch (err) {
-    console.warn('[notifications] daily reminder could not be scheduled:', err);
-    return false;
-  }
-}
-
-export async function cancelDailyRiskReminder() {
-  try {
-    await Notifications.cancelScheduledNotificationAsync(DAILY_REMINDER_ID);
-  } catch {
-    // Nothing to cancel on platforms without scheduling.
-  }
-}
-
-export async function getScheduledCount(): Promise<number> {
-  return (await Notifications.getAllScheduledNotificationsAsync()).length;
 }
 
 /**

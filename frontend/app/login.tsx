@@ -7,76 +7,49 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DisclaimerBanner } from '@/components/disclaimer-banner';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ApiError } from '@/lib/api';
+import { login } from '@/lib/auth-api';
+import { resolveStartRoute } from '@/lib/gate';
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const login = async () => {
-    if (!email || !password) {
-      alert('Please enter email and password.');
+  const onSignIn = async () => {
+    if (busy) return;
+    setError(null);
+
+    if (!email.trim() || !password) {
+      setError('Please enter your email and password.');
       return;
     }
 
-    await AsyncStorage.setItem(
-      'authSession',
-      JSON.stringify({
-        logged_in: true,
-        email,
-        login_type: 'demo',
-      })
-    );
-
-    const consent = await AsyncStorage.getItem('pilotConsent');
-
-    if (!consent) {
-      router.replace('/consent');
-      return;
+    setBusy(true);
+    try {
+      await login(email.trim().toLowerCase(), password);
+      const route = await resolveStartRoute();
+      router.replace(route);
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.status === 401
+          ? 'Incorrect email or password.'
+          : err instanceof ApiError
+            ? err.message
+            : 'Unable to sign in. Please try again.'
+      );
+    } finally {
+      setBusy(false);
     }
-
-    const profile = await AsyncStorage.getItem('caregiverProfile');
-
-    if (!profile) {
-      router.replace('/profile-setup');
-      return;
-    }
-
-    router.replace('/');
-  };
-
-  const demoLogin = async () => {
-    await AsyncStorage.setItem(
-      'authSession',
-      JSON.stringify({
-        logged_in: true,
-        email: 'demo@childguard.app',
-        login_type: 'demo',
-      })
-    );
-
-    const consent = await AsyncStorage.getItem('pilotConsent');
-
-    if (!consent) {
-      router.replace('/consent');
-      return;
-    }
-
-    const profile = await AsyncStorage.getItem('caregiverProfile');
-
-    if (!profile) {
-      router.replace('/profile-setup');
-      return;
-    }
-
-    router.replace('/');
   };
 
   return (
@@ -90,7 +63,6 @@ export default function LoginScreen() {
         </View>
 
         <Text style={styles.title}>Welcome to Child Guard</Text>
-
         <Text style={styles.subtitle}>
           Sign in to access personalised environmental health risk alerts for children.
         </Text>
@@ -104,6 +76,7 @@ export default function LoginScreen() {
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
+            autoComplete="email"
             keyboardType="email-address"
           />
 
@@ -117,15 +90,21 @@ export default function LoginScreen() {
             secureTextEntry
           />
 
-          <Pressable style={styles.primaryButton} onPress={login}>
-            <Text style={styles.primaryButtonText}>Sign In</Text>
+          {error && <Text style={styles.error}>{error}</Text>}
+
+          <Pressable
+            style={[styles.primaryButton, busy && styles.buttonDisabled]}
+            onPress={onSignIn}
+            disabled={busy}
+          >
+            {busy ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.primaryButtonText}>Sign In</Text>
+            )}
           </Pressable>
 
-          <Pressable style={styles.secondaryButton} onPress={demoLogin}>
-            <Text style={styles.secondaryButtonText}>Continue with Demo Login</Text>
-          </Pressable>
-
-          <Pressable onPress={() => router.push('/signup')}>
+          <Pressable onPress={() => router.push('/signup')} disabled={busy}>
             <Text style={styles.linkText}>Create caregiver account</Text>
           </Pressable>
         </View>
@@ -137,14 +116,8 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#F5F8FC',
-  },
-  container: {
-    flex: 1,
-    padding: 24,
-  },
+  screen: { flex: 1, backgroundColor: '#F5F8FC' },
+  container: { flex: 1, padding: 24 },
   logoCircle: {
     width: 82,
     height: 82,
@@ -154,19 +127,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 26,
   },
-  title: {
-    fontSize: 38,
-    fontWeight: '900',
-    color: '#101828',
-    letterSpacing: -1,
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#667085',
-    lineHeight: 24,
-    marginBottom: 28,
-  },
+  title: { fontSize: 38, fontWeight: '900', color: '#101828', letterSpacing: -1, marginBottom: 12 },
+  subtitle: { fontSize: 16, color: '#667085', lineHeight: 24, marginBottom: 28 },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 26,
@@ -174,12 +136,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E6EBF2',
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#475569',
-    marginBottom: 8,
-  },
+  label: { fontSize: 13, fontWeight: '800', color: '#475569', marginBottom: 8 },
   input: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
@@ -190,30 +147,16 @@ const styles = StyleSheet.create({
     color: '#101828',
     marginBottom: 16,
   },
+  error: { color: '#B91C1C', fontSize: 13, fontWeight: '700', marginBottom: 12 },
   primaryButton: {
     backgroundColor: '#2F6BFF',
     borderRadius: 18,
     paddingVertical: 16,
     marginTop: 4,
+    alignItems: 'center',
   },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  secondaryButton: {
-    backgroundColor: '#EEF5FF',
-    borderRadius: 18,
-    paddingVertical: 15,
-    marginTop: 12,
-  },
-  secondaryButtonText: {
-    color: '#2F6BFF',
-    fontSize: 15,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
+  buttonDisabled: { backgroundColor: '#94A3B8' },
+  primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900', textAlign: 'center' },
   linkText: {
     color: '#2F6BFF',
     fontSize: 15,
@@ -221,7 +164,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 18,
   },
-  disclaimer: {
-    marginTop: 24,
-  },
+  disclaimer: { marginTop: 24 },
 });

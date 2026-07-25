@@ -6,7 +6,9 @@ import MapView, { Marker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError, fetchEnvironmentRiskBatch, type BatchPoint } from '@/lib/api';
-import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
+import { childRiskInput, getSelectedChild } from '@/lib/current-child';
+import { routeForGateError } from '@/lib/gate';
+import { getCurrentCoords } from '@/lib/location';
 
 // Android renders Google Maps, which throws an uncatchable native error at mount
 // if no API key is configured. iOS uses Apple Maps (no key needed). When the key
@@ -26,10 +28,10 @@ export default function RegionalRiskMapScreen() {
       setLoading(true);
       setError(null);
 
-      const selected = await loadSelectedChild();
+      const selected = await getSelectedChild();
 
       if (!selected) {
-        setError('Please complete the child profile first.');
+        setError('Please add a child profile first.');
         return;
       }
 
@@ -52,7 +54,7 @@ export default function RegionalRiskMapScreen() {
 
       // One batch request instead of five parallel GETs — the previous approach
       // was the main driver of upstream rate-limiting.
-      const results = await fetchEnvironmentRiskBatch(selected, samplePoints);
+      const results = await fetchEnvironmentRiskBatch(childRiskInput(selected), samplePoints);
       const byId = new Map(results.map((item) => [item.id, item]));
 
       const successfulResults = samplePoints.flatMap((point) => {
@@ -78,7 +80,6 @@ export default function RegionalRiskMapScreen() {
         ];
       });
 
-      console.log(successfulResults);
 
       // Every zone failing means the service is unreachable, not that the area
       // is risk-free. Showing an empty map would imply the latter.
@@ -91,6 +92,7 @@ export default function RegionalRiskMapScreen() {
 
       setPoints(successfulResults);
     } catch (err) {
+      if (routeForGateError(err)) return;
       console.error('Regional map error:', err);
 
       setError(err instanceof ApiError ? err.message : 'Unable to load regional risk map.');

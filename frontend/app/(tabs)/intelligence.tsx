@@ -6,7 +6,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DisclaimerBanner } from '@/components/disclaimer-banner';
 import { ApiError, fetchEnvironmentRisk, type EnvironmentRisk } from '@/lib/api';
-import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
+import { childRiskInput, getSelectedChild } from '@/lib/current-child';
+import { routeForGateError } from '@/lib/gate';
+import { getCurrentCoords } from '@/lib/location';
 import { riskBg, riskText } from '@/lib/risk';
 
 export default function RiskIntelligenceScreen() {
@@ -20,17 +22,18 @@ export default function RiskIntelligenceScreen() {
       setLoading(true);
       setError(null);
 
-      const child = await loadSelectedChild();
+      const child = await getSelectedChild();
 
       if (!child) {
-        setError('Please complete the child profile first.');
+        setError('Please add a child profile first.');
         return;
       }
 
       const { lat, lon } = await getCurrentCoords();
 
-      setData(await fetchEnvironmentRisk(child, lat, lon));
+      setData(await fetchEnvironmentRisk(childRiskInput(child), lat, lon));
     } catch (err) {
+      if (routeForGateError(err)) return;
       console.error('Risk intelligence error:', err);
 
       setError(

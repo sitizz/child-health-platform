@@ -12,7 +12,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError, fetchEnvironmentRisk } from '@/lib/api';
-import { getCurrentCoords, loadSelectedChild } from '@/lib/profile';
+import { childRiskInput, getSelectedChild } from '@/lib/current-child';
+import { routeForGateError } from '@/lib/gate';
+import { getCurrentCoords } from '@/lib/location';
 import { riskText } from '@/lib/risk';
 
 export default function FullForecastScreen() {
@@ -26,18 +28,19 @@ export default function FullForecastScreen() {
       setLoading(true);
       setError(null);
 
-      const selected = await loadSelectedChild();
+      const selected = await getSelectedChild();
 
       if (!selected) {
-        setError('Please complete the child profile first.');
+        setError('Please add a child profile first.');
         return;
       }
 
       const { lat, lon } = await getCurrentCoords();
-      const result = await fetchEnvironmentRisk(selected, lat, lon);
+      const result = await fetchEnvironmentRisk(childRiskInput(selected), lat, lon);
 
       setForecast(result.forecast ?? []);
     } catch (err) {
+      if (routeForGateError(err)) return;
       console.error('Full forecast error:', err);
 
       setError(
