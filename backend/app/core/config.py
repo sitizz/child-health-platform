@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     cache_ttl_seconds: int = 300
     open_meteo_timeout_seconds: float = 5.0
+    open_meteo_api_key: str | None = None
     open_meteo_forecast_url: str = "https://api.open-meteo.com/v1/forecast"
     open_meteo_air_url: str = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
@@ -64,7 +65,13 @@ class Settings(BaseSettings):
             return items or ["*"]
         return value
 
-    @field_validator("api_key", "expo_access_token", "redis_url", mode="before")
+    @field_validator(
+        "api_key",
+        "expo_access_token",
+        "redis_url",
+        "open_meteo_api_key",
+        mode="before",
+    )
     @classmethod
     def empty_str_as_none(cls, value: object) -> object:
         if value == "":
@@ -74,6 +81,18 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def resolved_open_meteo_forecast_url(self) -> str:
+        if self.open_meteo_api_key and "customer-" not in self.open_meteo_forecast_url:
+            return "https://customer-api.open-meteo.com/v1/forecast"
+        return self.open_meteo_forecast_url
+
+    @property
+    def resolved_open_meteo_air_url(self) -> str:
+        if self.open_meteo_api_key and "customer-" not in self.open_meteo_air_url:
+            return "https://customer-air-quality-api.open-meteo.com/v1/air-quality"
+        return self.open_meteo_air_url
 
     @property
     def docs_enabled(self) -> bool:

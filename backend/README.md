@@ -122,8 +122,10 @@ CORS_ORIGINS=*
 RATE_LIMIT=60/minute
 CACHE_TTL_SECONDS=300
 OPEN_METEO_TIMEOUT_SECONDS=8.0
-OPEN_METEO_FORECAST_URL=https://api.open-meteo.com/v1/forecast
-OPEN_METEO_AIR_URL=https://air-quality-api.open-meteo.com/v1/air-quality
+OPEN_METEO_API_KEY=your-open-meteo-customer-key
+# Optional overrides; customer hosts are used automatically when the key is set.
+OPEN_METEO_FORECAST_URL=https://customer-api.open-meteo.com/v1/forecast
+OPEN_METEO_AIR_URL=https://customer-air-quality-api.open-meteo.com/v1/air-quality
 
 ENABLE_DOCS=false
 MODEL_VERSION=env-risk-heuristic-v2

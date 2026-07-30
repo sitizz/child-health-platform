@@ -24,6 +24,11 @@ class OpenMeteoClient:
         self._client = client
         self._settings = settings
 
+    def _with_api_key(self, params: dict[str, Any]) -> dict[str, Any]:
+        if self._settings.open_meteo_api_key:
+            return {**params, "apikey": self._settings.open_meteo_api_key}
+        return params
+
     @retry(
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.TransportError)),
         stop=stop_after_attempt(3),
@@ -31,7 +36,7 @@ class OpenMeteoClient:
         reraise=True,
     )
     async def _get(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
-        response = await self._client.get(url, params=params)
+        response = await self._client.get(url, params=self._with_api_key(params))
         response.raise_for_status()
         return response.json()
 
@@ -51,8 +56,10 @@ class OpenMeteoClient:
 
         try:
             weather, air = await asyncio.gather(
-                self._get(self._settings.open_meteo_forecast_url, weather_params),
-                self._get(self._settings.open_meteo_air_url, air_params),
+                self._get(
+                    self._settings.resolved_open_meteo_forecast_url, weather_params
+                ),
+                self._get(self._settings.resolved_open_meteo_air_url, air_params),
             )
         except httpx.HTTPStatusError as exc:
             logger.error(
@@ -95,12 +102,14 @@ class OpenMeteoClient:
     async def ping(self) -> bool:
         try:
             response = await self._client.get(
-                self._settings.open_meteo_forecast_url,
-                params={
-                    "latitude": 0,
-                    "longitude": 0,
-                    "current": "temperature_2m",
-                },
+                self._settings.resolved_open_meteo_forecast_url,
+                params=self._with_api_key(
+                    {
+                        "latitude": 0,
+                        "longitude": 0,
+                        "current": "temperature_2m",
+                    }
+                ),
             )
             return response.status_code < 500
         except httpx.HTTPError:
