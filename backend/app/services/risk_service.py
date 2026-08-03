@@ -17,6 +17,7 @@ from app.schemas.risk import (
     BatchRiskRequest,
     BatchRiskResponse,
     ChildVulnerability,
+    DomainLabels,
     DomainRisks,
     EnvironmentMetrics,
     EnvironmentRiskResponse,
@@ -96,6 +97,7 @@ class RiskService:
                 heat_stress=assessment.predictive_heat.level,
                 respiratory=assessment.predictive_respiratory.level,
                 dengue=assessment.predictive_dengue.level,
+                flood=assessment.predictive_flood.level,
             ),
             priority_alert=assessment.priority_alert,
             forecast=[
@@ -129,6 +131,7 @@ class RiskService:
                 school=guidance.school,
                 community=guidance.community,
             ),
+            domain_labels=DomainLabels(),
             model_version=self._settings.model_version,
             disclaimer=self._settings.disclaimer,
         )

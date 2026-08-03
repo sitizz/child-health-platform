@@ -59,6 +59,7 @@ class RiskAssessment:
     predictive_heat: ScoredDomain
     predictive_respiratory: ScoredDomain
     predictive_dengue: ScoredDomain
+    predictive_flood: ScoredDomain
     forecast: list[ForecastDayScore]
     priority_alert: RiskLevel
 
@@ -183,17 +184,19 @@ def _score_predictive(
     obs: EnvironmentObservation,
     age_group: AgeGroup,
     base_respiratory_score: int,
-) -> tuple[ScoredDomain, ScoredDomain, ScoredDomain]:
+) -> tuple[ScoredDomain, ScoredDomain, ScoredDomain, ScoredDomain]:
     """Score predictive domains from forecast inputs.
 
     Uses base (pre age-boost) respiratory score so under5 is not double-counted.
     """
     predictive_heat = 0
     predictive_dengue = 0
+    predictive_flood = 0
     predictive_respiratory = base_respiratory_score
 
     max_forecast_temp = max(obs.daily_temp_max) if obs.daily_temp_max else obs.temperature
     total_forecast_rain = sum(obs.daily_rain) if obs.daily_rain else 0.0
+    max_forecast_rain = max(obs.daily_rain) if obs.daily_rain else 0.0
 
     if max_forecast_temp >= 38:
         predictive_heat += 2
@@ -209,6 +212,13 @@ def _score_predictive(
     if total_forecast_rain >= 10:
         predictive_dengue += 1
 
+    if max_forecast_rain >= 30:
+        predictive_flood += 2
+    elif max_forecast_rain >= 15:
+        predictive_flood += 1
+    if total_forecast_rain >= 50:
+        predictive_flood += 1
+
     if age_group == "under5":
         predictive_heat += 1
         predictive_respiratory += 1
@@ -221,6 +231,7 @@ def _score_predictive(
             score=predictive_respiratory,
         ),
         ScoredDomain(level=classify_risk(predictive_dengue), score=predictive_dengue),
+        ScoredDomain(level=classify_risk(predictive_flood), score=predictive_flood),
     )
 
 
@@ -247,10 +258,12 @@ def assess_risks(
     vulnerability = _score_vulnerability(factors)
 
     forecast = _build_forecast(obs, factors.age_group)
-    predictive_heat, predictive_respiratory, predictive_dengue = _score_predictive(
-        obs,
-        factors.age_group,
-        base_respiratory_score=respiratory_base.score,
+    predictive_heat, predictive_respiratory, predictive_dengue, predictive_flood = (
+        _score_predictive(
+            obs,
+            factors.age_group,
+            base_respiratory_score=respiratory_base.score,
+        )
     )
 
     priority = _priority(
@@ -266,6 +279,7 @@ def assess_risks(
         predictive_heat=predictive_heat,
         predictive_respiratory=predictive_respiratory,
         predictive_dengue=predictive_dengue,
+        predictive_flood=predictive_flood,
         forecast=forecast,
         priority_alert=priority,
     )

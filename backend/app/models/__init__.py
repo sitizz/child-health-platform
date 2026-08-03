@@ -5,6 +5,7 @@ from app.models.disclaimer import DisclaimerAck
 from app.models.device import DeviceToken
 from app.models.notification import NotificationLog, NotificationState
 from app.models.assessment import RiskAssessment
+from app.models.engagement import EngagementEvent
 
 __all__ = [
     "Caregiver",
@@ -16,4 +17,5 @@ __all__ = [
     "NotificationLog",
     "NotificationState",
     "RiskAssessment",
+    "EngagementEvent",
 ]

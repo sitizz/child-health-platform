@@ -2,12 +2,12 @@
 
 > **Frontend Implementation Guide**
 >
-> **Version:** 1.0 (Section 7 — Auth, Consent, Multi-child, Explainable AI, Panel, Push)  
+> **Version:** 1.2 (Auth, Consent, Multi-child, Explainable AI, Panel, Push, Engagement Tracking)  
 > **Production URL:** `https://child-health-platform.onrender.com`  
 > **Local URL (Docker Compose):** `http://localhost:18000`  
 > **API prefix:** `/api/v1/`  
 > **Interactive docs:** `/docs` (Swagger), `/redoc`, `/openapi.json`  
-> **Last Updated:** July 22, 2026
+> **Last Updated:** August 3, 2026
 
 ---
 
@@ -27,6 +27,7 @@
    - [Recommendations (Explainable AI)](#recommendations-explainable-ai)
    - [Parent Panel](#parent-panel)
    - [Devices & Push](#devices--push)
+   - [Engagement Tracking](#engagement-tracking)
    - [Environment Risk](#environment-risk)
 7. [React Native Flows](#react-native-flows)
 8. [Changelog](#changelog)
@@ -322,6 +323,8 @@ List children.
 
 `201` on success. `400` if already at max 10.
 
+On success, the server also records an `add_child` engagement event (see [Engagement Tracking](#engagement-tracking)).
+
 #### `GET /children/{child_id}`
 #### `PATCH /children/{child_id}`
 Partial update of profile fields.
@@ -364,11 +367,11 @@ Same result shape; persists a risk assessment for history/panel.
 ```json
 {
   "overall_risk": "high",
-  "primary_hazards": ["respiratory", "heat_stress"],
+  "primary_hazards": ["Respiratory", "Heat Stress"],
   "explanation": {
-    "why": "...",
-    "environmental_factors": ["..."],
-    "child_factors": ["asthma", "cough"]
+    "why": "Overall environmental health risk is high based on Respiratory, Heat Stress.",
+    "environmental_factors": ["Poor air quality detected", "High temperature detected"],
+    "child_factors": ["Asthma or respiratory vulnerability is present", "Current cough or wheezing symptoms are present"]
   },
   "priority_actions": ["..."],
   "secondary_actions": ["..."],
@@ -439,9 +442,127 @@ API key only (scheduler/cron). For each child with a recent assessment and `noti
 | `risk_improved` | Previous notified priority was `high`, now `moderate` or `low` |
 | `daily_briefing` | No alert applies; at most once per calendar day for `moderate`/`low` |
 
-Cooldownupe/cooldown via `notification_state` (`NOTIFICATION_COOLDOWN_MINUTES`, default **180**). Inactive Expo tokens (`DeviceNotRegistered`) are marked inactive.
+Cooldown via `notification_state` (`NOTIFICATION_COOLDOWN_MINUTES`, default **180**). Inactive Expo tokens (`DeviceNotRegistered`) are marked inactive.
 
 Response: `{ "processed_children", "notifications_sent", "skipped" }`.
+
+#### Push notification prerequisites
+
+For push notifications to reach devices, **all** of the following must be in place:
+
+1. **Frontend registers push token** — on app launch, call `Notifications.getExpoPushTokenAsync()` and send the token to `POST /devices` with a valid JWT.
+2. **`expo-notifications` plugin** in `app.json` — required for native push infrastructure in production builds.
+3. **Consent opt-in** — the caregiver must accept consent with `notifications_opt_in: true`.
+4. **Risk assessments exist** — at least one assessment must be persisted for each child (via `GET /children/{id}/recommendations`).
+5. **Scheduler calls dispatch** — an external cron job must call `POST /notifications/dispatch` periodically (e.g. every 30 minutes). The backend does not self-schedule.
+6. **`EXPO_ACCESS_TOKEN`** environment variable should be set on the server for authenticated Expo push delivery.
+
+---
+
+### Engagement Tracking
+
+Base: `/api/v1/engagement`
+
+Tracks caregiver actions that indicate platform engagement. Events are stored in PostgreSQL (`engagement_events`) and can be queried as aggregates.
+
+#### Event types
+
+| `event_type` | When to record | Logged by |
+|--------------|----------------|-----------|
+| `add_child` | A new child profile is created | Server auto-logs on `POST /children` |
+| `share_summary` | User shares an alert / risk summary | Client calls `POST /engagement/track` |
+| `risk_check` | User successfully checks current risk | Client calls `POST /engagement/track` |
+
+#### `POST /engagement/track`
+
+Log an engagement event. JWT is **optional**: when a valid bearer token is present, the event is attributed to that caregiver; otherwise `caregiver_id` is stored as `null` (anonymous).
+
+```json
+{
+  "event_type": "risk_check",
+  "metadata": {
+    "priority": "high",
+    "child_id": "550e8400-e29b-41d4-a716-446655440000"
+  }
+}
+```
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `event_type` | string | Required. One of `add_child`, `share_summary`, `risk_check` |
+| `metadata` | object \| null | Optional context (e.g. priority, child_id) |
+
+`201` response:
+
+```json
+{
+  "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "caregiver_id": "550e8400-e29b-41d4-a716-446655440000",
+  "event_type": "risk_check",
+  "metadata": { "priority": "high", "child_id": "..." },
+  "created_at": "2026-08-03T11:42:00Z"
+}
+```
+
+`422` if `event_type` is not one of the allowed values.
+
+#### `GET /engagement/metrics`
+
+Requires JWT. Returns aggregated engagement counts for the authenticated caregiver.
+
+Query params:
+
+| Param | Type | Notes |
+|-------|------|-------|
+| `from_date` | date (`YYYY-MM-DD`) | Optional inclusive start (UTC) |
+| `to_date` | date (`YYYY-MM-DD`) | Optional inclusive end (UTC) |
+
+Example: `GET /api/v1/engagement/metrics?from_date=2026-08-01&to_date=2026-08-03`
+
+`200` response:
+
+```json
+{
+  "total_events": 52,
+  "by_type": {
+    "add_child": 3,
+    "share_summary": 7,
+    "risk_check": 42
+  },
+  "daily": [
+    {
+      "date": "2026-08-03",
+      "add_child": 1,
+      "share_summary": 2,
+      "risk_check": 10
+    }
+  ]
+}
+```
+
+`401` if missing or invalid bearer token.
+
+#### Frontend instrumentation (React Native)
+
+After a successful risk check:
+
+```javascript
+await api.post('/engagement/track', {
+  event_type: 'risk_check',
+  metadata: { priority: data.priority_alert, child_id: selectedChild?.id ?? null },
+});
+```
+
+After the user completes a share action (`Share.sharedAction`):
+
+```javascript
+await api.post('/engagement/track', {
+  event_type: 'share_summary',
+  metadata: { priority: result.priority_alert, child_id: selectedChild?.id ?? null },
+});
+```
+
+Do **not** call track for `add_child` from the client when using `POST /children` — the backend already logs it.
 
 ---
 
@@ -473,6 +594,34 @@ Query params:
 }
 ```
 
+#### Response fields
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `location` | `{ lat, lon }` | Echo of request coordinates |
+| `age_group` | string | `under5` \| `child` \| `adolescent` |
+| `environment` | object | `temperature`, `humidity`, `rainfall`, `aqi`, `pm2_5`, `pm10` |
+| `risks` | object | Current risk levels: `heat_stress`, `respiratory`, `dengue`, `flood` (each `low` \| `moderate` \| `high`) |
+| `risk_reasons` | object | Per-domain reason arrays: `heat_stress`, `respiratory`, `dengue`, `flood` |
+| `child_vulnerability` | object | `level` + `reasons` array |
+| `predictive_domains` | object | Forecast-based risk levels: `heat_stress`, `respiratory`, `dengue`, `flood` |
+| `priority_alert` | string | Highest current risk: `low` \| `moderate` \| `high` |
+| `forecast` | array | 7-day forecast: `day`, `max_temperature`, `rainfall`, `predicted_risk` |
+| `action` | string | Priority action message |
+| `recommended_action` | object | `immediate`, `caregiver`, `school`, `community`, `when_to_escalate` arrays |
+| `trend` | object | `direction` (`increasing` \| `stable` \| `decreasing`) + `message` |
+| `escalation` | object | `level` (`normal` \| `watch` \| `urgent`) + `reason` |
+| `guidance` | object | Age-specific: `group`, `summary`, `key_points` |
+| `stakeholder_guidance` | object | `caregiver`, `school`, `community` arrays |
+| `domain_labels` | object | Display-ready names: `{ "heat_stress": "Heat Stress", "respiratory": "Respiratory", "dengue": "Dengue", "flood": "Flood" }` |
+| `model_version` | string | Scoring model version |
+| `disclaimer` | string | Medical disclaimer text |
+
+**Notes:**
+- `risks` contains **current** (real-time) risk levels based on live weather data.
+- `predictive_domains` contains **forecast-based** risk levels that account for upcoming weather conditions over the next 7 days. Values may differ from `risks` for the same domain.
+- `domain_labels` maps JSON field keys (e.g. `heat_stress`) to display-ready labels (e.g. `"Heat Stress"`). Use these labels in the UI instead of formatting keys manually.
+
 #### Legacy
 
 `GET /environment-risk` — same query as v1 GET; prefer `/api/v1/environment-risk`.
@@ -495,9 +644,16 @@ Query params:
 ### Daily risk check
 
 1. Get location  
-2. `GET /children/{id}/recommendations?lat=&lon=`  
+2. `GET /children/{id}/recommendations?lat=&lon=` *(or legacy `GET /environment-risk`)*  
 3. Render `explanation`, `priority_actions`, always show `disclaimer`  
-4. Refresh panel overview
+4. `POST /engagement/track` with `event_type: "risk_check"` and priority in `metadata`  
+5. Refresh panel overview
+
+### Share alert summary
+
+1. Build share message from the latest risk result  
+2. Call native `Share.share(...)`  
+3. If the user completed the share (`Share.sharedAction`), `POST /engagement/track` with `event_type: "share_summary"`
 
 ### Session recovery
 
@@ -548,6 +704,21 @@ See [`backend/README.md`](../backend/README.md) for details.
 ---
 
 ## Changelog
+
+### 1.2 — 2026-08-03
+
+- **Engagement tracking:** new `POST /api/v1/engagement/track` and `GET /api/v1/engagement/metrics` endpoints.
+- **Event types:** `add_child`, `share_summary`, `risk_check` stored in PostgreSQL (`engagement_events`).
+- **Auto-log on child create:** `POST /children` records an `add_child` event server-side.
+- **Metrics API:** per-caregiver totals by event type plus daily breakdown; optional `from_date` / `to_date` filters.
+- **Frontend guide:** document when the mobile app should call track for risk checks and share actions.
+
+### 1.1 — 2026-08-03
+
+- **Domain display names:** `primary_hazards` now returns human-readable names (`"Heat Stress"` instead of `"heat_stress"`). The `why` explanation text also uses display names.
+- **`domain_labels` field:** new object in environment-risk response mapping JSON keys to display-ready labels (e.g. `heat_stress` → `"Heat Stress"`).
+- **Predictive flood scoring:** `predictive_domains` now includes `flood` (previously only heat_stress, respiratory, dengue). Scored from forecast rainfall data.
+- **Push notification docs:** added prerequisites checklist documenting all required steps for push notifications to work end-to-end.
 
 ### 1.0 — 2026-07-22
 

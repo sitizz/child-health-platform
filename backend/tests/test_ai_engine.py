@@ -26,7 +26,7 @@ def test_asthma_high_aqi_explainable():
         exposures={},
     )
     assert result.overall_risk in {"moderate", "high"}
-    assert "respiratory" in result.primary_hazards
+    assert "Respiratory" in result.primary_hazards
     assert any("asthma" in f.lower() or "respiratory" in f.lower() for f in result.child_factors)
     assert result.priority_actions
     assert result.data_completeness == "full"
@@ -41,7 +41,7 @@ def test_under5_heat_dehydration():
         symptoms={"dehydration": True},
         exposures={},
     )
-    assert "heat_stress" in result.primary_hazards
+    assert "Heat Stress" in result.primary_hazards
     assert any("hydration" in a.lower() or "cooler" in a.lower() for a in result.priority_actions)
     assert result.escalation_advice
 
@@ -54,7 +54,7 @@ def test_dengue_fever_mosquito():
         symptoms={"fever": True},
         exposures={"mosquito_exposure": True},
     )
-    assert "dengue" in result.primary_hazards
+    assert "Dengue" in result.primary_hazards
     assert any("mosquito" in a.lower() for a in result.priority_actions)
 
 

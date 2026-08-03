@@ -73,6 +73,7 @@ class PredictiveDomains(BaseModel):
     heat_stress: RiskLevel
     respiratory: RiskLevel
     dengue: RiskLevel
+    flood: RiskLevel
 
 
 class ForecastDay(BaseModel):
@@ -112,6 +113,13 @@ class StakeholderGuidance(BaseModel):
     community: list[str]
 
 
+class DomainLabels(BaseModel):
+    heat_stress: str = "Heat Stress"
+    respiratory: str = "Respiratory"
+    dengue: str = "Dengue"
+    flood: str = "Flood"
+
+
 class EnvironmentRiskResponse(BaseModel):
     location: Location
     age_group: AgeGroup
@@ -128,6 +136,7 @@ class EnvironmentRiskResponse(BaseModel):
     escalation: Escalation
     guidance: Guidance
     stakeholder_guidance: StakeholderGuidance
+    domain_labels: DomainLabels
     model_version: str
     disclaimer: str
 
