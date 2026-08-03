@@ -2,10 +2,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_child_service, require_personalised_access
+from app.api.deps import get_child_service, get_engagement_service, require_personalised_access
 from app.models.caregiver import Caregiver
 from app.schemas.child import ChildCreate, ChildOut, ChildUpdate
 from app.services.child_service import ChildService
+from app.services.engagement_service import EngagementService
 
 router = APIRouter(prefix="/children", tags=["Children"])
 
@@ -23,8 +24,15 @@ async def create_child(
     payload: ChildCreate,
     caregiver: Caregiver = Depends(require_personalised_access),
     service: ChildService = Depends(get_child_service),
+    engagement: EngagementService = Depends(get_engagement_service),
 ) -> ChildOut:
-    return await service.create(caregiver.id, payload)
+    child = await service.create(caregiver.id, payload)
+    await engagement.log_event(
+        event_type="add_child",
+        caregiver_id=caregiver.id,
+        metadata={"child_id": str(child.id)},
+    )
+    return child
 
 
 @router.get("/{child_id}", response_model=ChildOut)

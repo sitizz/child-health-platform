@@ -14,6 +14,19 @@ from app.domain.scoring import (
 from app.schemas.common import AgeGroup, RiskLevel
 
 
+DOMAIN_DISPLAY_NAMES: dict[str, str] = {
+    "heat_stress": "Heat Stress",
+    "respiratory": "Respiratory",
+    "dengue": "Dengue",
+    "flood": "Flood",
+}
+
+
+def format_domain_name(name: str) -> str:
+    """Convert a snake_case domain key to a human-readable display name."""
+    return DOMAIN_DISPLAY_NAMES.get(name, name.replace("_", " ").title())
+
+
 def age_to_group(age: int) -> AgeGroup:
     if age < 5:
         return "under5"
@@ -95,7 +108,7 @@ def build_explainable_recommendation(
     }
     for name, level in risk_map.items():
         if level in ("moderate", "high"):
-            hazards.append(name)
+            hazards.append(format_domain_name(name))
 
     env_factors.extend(assessment.heat.reasons)
     env_factors.extend(assessment.respiratory.reasons)

@@ -106,3 +106,25 @@ async def get_current_caregiver(
             detail="Caregiver not found",
         )
     return caregiver
+
+
+async def get_optional_caregiver(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    _: None = Depends(require_api_key),
+) -> Caregiver | None:
+    """Return the authenticated caregiver when a bearer token is present, else None."""
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        return None
+    payload = decode_access_token(credentials.credentials, settings)
+    try:
+        caregiver_id = UUID(payload["sub"])
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token subject",
+        ) from exc
+
+    result = await db.execute(select(Caregiver).where(Caregiver.id == caregiver_id))
+    return result.scalar_one_or_none()

@@ -23,6 +23,8 @@ EXPECTED_OPENAPI_PATHS = {
     "/api/v1/children",
     "/api/v1/panel/overview",
     "/api/v1/devices",
+    "/api/v1/engagement/track",
+    "/api/v1/engagement/metrics",
 }
 
 
