@@ -2,7 +2,7 @@
 
 > **Frontend Implementation Guide**
 >
-> **Version:** 1.3 (ML triage, text simplification, vision/audio stubs, i18n skeleton)  
+> **Version:** 1.3 (ML triage, Gemini LLM communication layer, vision/audio stubs, i18n skeleton)  
 > **Production URL:** `https://child-health-platform.onrender.com`  
 > **Local URL (Docker Compose):** `http://localhost:18000`  
 > **API prefix:** `/api/v1/`  
@@ -414,7 +414,9 @@ Same result shape; persists a risk assessment for history/panel.
     "readability": {
       "average_flesch_kincaid_grade": 8.5,
       "why_reading_ease": 65.2
-    }
+    },
+    "source": "gemini",
+    "llm_model": "gemini-2.0-flash"
   }
 }
 ```
@@ -423,6 +425,8 @@ Same result shape; persists a risk assessment for history/panel.
 |-------|--------|
 | `ml_prediction` | Offline scikit-learn triage. **Does not change** `overall_risk` or actions. |
 | `simplified` | Caregiver-friendly rewrite of the same guidance + readability scores. Prefer this for lower-literacy UI copy. |
+| `simplified.source` | `"gemini"` when the LLM rewrite passed validation, else `"rules"` (offline fallback). |
+| `simplified.llm_model` | Model name when `source` is `"gemini"`, otherwise `null`. |
 | `language` | Negotiated locale used for ML note / disclaimer strings where translated. |
 
 Guidance is **not diagnostic**. Never present actions as medical treatment. When `agrees_with_engine` is `false`, keep showing the engine’s `overall_risk` / actions and optionally surface the ML note as “for review”.
@@ -450,9 +454,32 @@ Design principle: the deterministic climate-health engine remains the single sou
   "risk_domains": ["heat_stress", "respiratory", "dengue", "flood", "low_risk"],
   "vision_status": "not_implemented",
   "audio_status": "not_implemented",
-  "supported_languages": ["en", "ms", "ur", "id"]
+  "supported_languages": ["en", "ms", "ur", "id"],
+  "llm_enabled": true,
+  "llm_provider": "gemini",
+  "llm_model": "gemini-2.0-flash"
 }
 ```
+
+#### LLM communication layer (Gemini)
+
+`simplified` on recommendations / environment-risk is produced by **Google Gemini** when `GEMINI_API_KEY` is configured:
+
+- Rewrites approved engine text into simpler caregiver language
+- Builds a short 2–3 sentence summary
+- Translates into `en` / `ms` / `ur` / `id` when `language` / `Accept-Language` is set
+- **Never** invents medical advice or changes risk scores
+- On missing key, Gemini error, or failed grounding validation → offline rule-based fallback (`source: "rules"`)
+
+**Anti-hallucination controls (server-side):**
+- Strict grounded system prompt (approved JSON is the only allowed truth)
+- `temperature=0`, low `topP` / `topK`
+- Exact list-length match (no extra/missing bullets)
+- Blocks diagnosis / medicine / dosage language
+- Rejects novel clinical tokens not present in the approved source
+- English faithfulness check per bullet; unsafe output is discarded
+
+`simplified.source` is `"gemini"` or `"rules"`. Optional `simplified.llm_model` names the model used.
 
 #### `POST /ml/predict`
 
@@ -794,7 +821,7 @@ Query params:
 | `model_version` | string | Scoring model version |
 | `disclaimer` | string | Medical disclaimer text |
 | `ml_prediction` | object \| null | Offline triage: `predicted_domain`, `confidence`, `agrees_with_engine`, `engine_primary_domain`, `model_version`, `note` |
-| `simplified` | object \| null | Caregiver-friendly: `summary`, `immediate`, `when_to_escalate`, `average_flesch_kincaid_grade` |
+| `simplified` | object \| null | Caregiver-friendly: `summary`, `immediate`, `when_to_escalate`, `average_flesch_kincaid_grade`, `source` (`gemini` \| `rules`), `llm_model` |
 | `language` | string | Negotiated locale (default `en`) |
 
 **Notes:**
@@ -895,6 +922,8 @@ See [`backend/README.md`](../backend/README.md) for details.
 - **ML API:** `GET /api/v1/ml/status`, `POST /api/v1/ml/predict`, `GET /api/v1/ml/languages`.
 - **Vision / audio stubs:** `POST /api/v1/ml/vision/analyze` and `POST /api/v1/ml/audio/analyze` return `501` with planned capability contracts.
 - **Text simplifier:** caregiver-friendly rewrite + Flesch-Kincaid readability on recommendations and environment-risk responses (`simplified` field).
+- **Gemini LLM communication layer:** rewrites / summarizes / translates approved engine text only (`source: gemini`); falls back to rules when unset/error.
+- **Anti-hallucination guards:** strictly grounded prompt, `temperature=0`, exact list-length match, blocked diagnosis/medicine/dosage language, novel clinical token rejection, and per-bullet faithfulness checks. Any violation discards the LLM output and serves the rule-based fallback.
 - **Response enrichment:** `ml_prediction`, `simplified`, and `language` on recommendation and environment-risk payloads. Deterministic engine remains decision-maker.
 - **i18n skeleton:** `Accept-Language` middleware (`Content-Language` response header), `language` query/body on recommendations; supported codes `en`, `ms`, `ur`, `id`.
 - **Frontend:** home risk card can display ML confidence and simplified actions.

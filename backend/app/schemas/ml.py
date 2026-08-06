@@ -23,6 +23,8 @@ class SimplifiedRecommendation(BaseModel):
     monitoring_advice: list[str]
     escalation_advice: list[str]
     readability: dict[str, Any]
+    source: Literal["gemini", "rules"] = "rules"
+    llm_model: str | None = None
 
 
 class MLPredictRequest(BaseModel):
@@ -55,3 +57,6 @@ class MLStatusResponse(BaseModel):
     vision_status: Literal["not_implemented"] = "not_implemented"
     audio_status: Literal["not_implemented"] = "not_implemented"
     supported_languages: list[str]
+    llm_enabled: bool = False
+    llm_provider: str = "gemini"
+    llm_model: str | None = None
