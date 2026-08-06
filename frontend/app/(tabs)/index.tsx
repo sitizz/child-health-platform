@@ -319,7 +319,7 @@ const getAqiLevel = (aqi: number) => {
 
         <View style={styles.aiBadge}>
           <Ionicons name="shield-checkmark-outline" size={17} color="#1FAE9B" />
-          <Text style={styles.aiBadgeText}>AI Monitoring Active</Text>
+          <Text style={styles.aiBadgeText}>AI/ML Monitoring Active</Text>
         </View>
 
         <Text style={styles.title}>Environmental{"\n"}Intelligence</Text>
@@ -424,8 +424,23 @@ const getAqiLevel = (aqi: number) => {
                 {result.priority_alert ? result.priority_alert.toUpperCase() : 'UNKNOWN'}
               </Text>
               <Text style={styles.riskDescription}>
-                Stable environmental conditions detected for this time.
+                {result.simplified?.summary
+                  || 'Stable environmental conditions detected for this time.'}
               </Text>
+              {result.ml_prediction && (
+                <View style={styles.mlConfidenceRow}>
+                  <Ionicons name="analytics-outline" size={14} color="#1FAE9B" />
+                  <Text style={styles.mlConfidenceText}>
+                    ML Confidence{' '}
+                    {Math.round((result.ml_prediction.confidence ?? 0) * 100)}%
+                    {' · '}
+                    {(result.ml_prediction.predicted_domain || 'unknown')
+                      .replace('_', ' ')
+                      .toUpperCase()}
+                    {result.ml_prediction.agrees_with_engine ? ' · Agrees' : ' · Review'}
+                  </Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.riskRing}>
@@ -435,13 +450,17 @@ const getAqiLevel = (aqi: number) => {
                   { color: riskTextColour(result.priority_alert) },
                 ]}
               >
-                {result.priority_alert === 'high'
+                {result.ml_prediction?.confidence != null
+                  ? Math.round(result.ml_prediction.confidence * 100)
+                  : result.priority_alert === 'high'
                   ? '82'
                   : result.priority_alert === 'moderate'
                   ? '56'
                   : '23'}
               </Text>
-              <Text style={styles.riskOutOf}>/100</Text>
+              <Text style={styles.riskOutOf}>
+                {result.ml_prediction?.confidence != null ? '%' : '/100'}
+              </Text>
             </View>
           </View>
 
@@ -502,12 +521,20 @@ const getAqiLevel = (aqi: number) => {
 
           <View style={styles.actionCard}>
             <Text style={styles.cardTitle}>Immediate Actions</Text>
+            {result.simplified?.summary ? (
+              <Text style={styles.simplifiedHint}>
+                Caregiver-friendly summary: {result.simplified.summary}
+              </Text>
+            ) : null}
 
             <View style={styles.actionSplit}>
               <View style={styles.recommendedBox}>
                 <Text style={styles.actionTitle}>Recommended</Text>
 
-                {result.recommended_action?.immediate?.map((item: string, index: number) => (
+                {(result.simplified?.immediate?.length
+                  ? result.simplified.immediate
+                  : result.recommended_action?.immediate
+                )?.map((item: string, index: number) => (
                   <Text key={index} style={styles.actionText}>✓ {item}</Text>
                 ))}
               </View>
@@ -515,7 +542,10 @@ const getAqiLevel = (aqi: number) => {
               <View style={styles.escalateBox}>
                 <Text style={styles.actionTitle}>Escalate if</Text>
 
-                {result.recommended_action?.when_to_escalate?.map((item: string, index: number) => (
+                {(result.simplified?.when_to_escalate?.length
+                  ? result.simplified.when_to_escalate
+                  : result.recommended_action?.when_to_escalate
+                )?.map((item: string, index: number) => (
                   <Text key={index} style={styles.actionText}>• {item}</Text>
                 ))}
               </View>
@@ -631,6 +661,28 @@ const styles = StyleSheet.create({
     color: '#1FAE9B',
     fontSize: 13,
     fontWeight: '800',
+  },
+  mlConfidenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  mlConfidenceText: {
+    color: '#0F766E',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  simplifiedHint: {
+    color: '#475467',
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 12,
   },
   title: {
     color: '#101828',

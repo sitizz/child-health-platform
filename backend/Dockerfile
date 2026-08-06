@@ -12,6 +12,7 @@ COPY requirements.txt requirements-dev.txt ./
 RUN pip install --upgrade pip && pip install -r requirements-dev.txt
 
 COPY app ./app
+COPY scripts ./scripts
 COPY main.py .
 COPY alembic.ini .
 COPY alembic ./alembic

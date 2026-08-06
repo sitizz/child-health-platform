@@ -8,6 +8,7 @@ from app.api.v1.routes import (
     disclaimer,
     engagement,
     health,
+    ml,
     panel,
     recommendations,
     risk,
@@ -22,5 +23,6 @@ api_v1_router.include_router(recommendations.router)
 api_v1_router.include_router(panel.router)
 api_v1_router.include_router(devices.router)
 api_v1_router.include_router(risk.router)
+api_v1_router.include_router(ml.router)
 api_v1_router.include_router(engagement.router)
 api_v1_router.include_router(health.router, prefix="/system")

@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.schemas.common import RiskLevel
+from app.schemas.ml import MLPredictionResult, SimplifiedRecommendation
 
 
 class Explanation(BaseModel):
@@ -27,6 +28,9 @@ class RecommendationResult(BaseModel):
     risks: dict[str, Any] | None = None
     child_id: UUID | None = None
     assessment_id: UUID | None = None
+    ml_prediction: MLPredictionResult | None = None
+    simplified: SimplifiedRecommendation | None = None
+    language: str = "en"
 
 
 class RecommendationEvaluateRequest(BaseModel):
@@ -38,3 +42,7 @@ class RecommendationEvaluateRequest(BaseModel):
     allergies: dict[str, Any] = Field(default_factory=dict)
     symptoms: dict[str, Any] = Field(default_factory=dict)
     exposures: dict[str, Any] = Field(default_factory=dict)
+    language: str | None = Field(
+        default=None,
+        description="Preferred response language (en, ms, ur, id)",
+    )

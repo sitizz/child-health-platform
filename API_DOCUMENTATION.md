@@ -2,12 +2,12 @@
 
 > **Frontend Implementation Guide**
 >
-> **Version:** 1.2 (Auth, Consent, Multi-child, Explainable AI, Panel, Push, Engagement Tracking)  
+> **Version:** 1.3 (ML triage, text simplification, vision/audio stubs, i18n skeleton)  
 > **Production URL:** `https://child-health-platform.onrender.com`  
 > **Local URL (Docker Compose):** `http://localhost:18000`  
 > **API prefix:** `/api/v1/`  
 > **Interactive docs:** `/docs` (Swagger), `/redoc`, `/openapi.json`  
-> **Last Updated:** August 3, 2026
+> **Last Updated:** August 6, 2026
 
 ---
 
@@ -25,6 +25,7 @@
    - [Disclaimer](#disclaimer)
    - [Children](#children)
    - [Recommendations (Explainable AI)](#recommendations-explainable-ai)
+   - [Machine Learning](#machine-learning)
    - [Parent Panel](#parent-panel)
    - [Devices & Push](#devices--push)
    - [Engagement Tracking](#engagement-tracking)
@@ -50,6 +51,7 @@
 | `Content-Type: application/json` | All JSON bodies |
 | `X-API-Key: <key>` | When server has `API_KEY` set (required in production) |
 | `Authorization: Bearer <access>` | Caregiver-authenticated routes |
+| `Accept-Language: ms-MY,en;q=0.8` | Optional. Negotiates response language (`en`, `ms`, `ur`, `id`). Echoed as `Content-Language`. |
 
 ### Quick Start (React Native)
 
@@ -173,7 +175,7 @@ Personalised routes require **both**:
 
 Gated groups: **Children**, **Recommendations**, **Panel**, **Devices**, personalised notification test.
 
-Public (API-key only when configured): Health, Auth register/login/refresh, Consent/Disclaimer copy + accept, Environment Risk, notification dispatch (scheduler).
+Public (API-key only when configured): Health, Auth register/login/refresh, Consent/Disclaimer copy + accept, Environment Risk, Machine Learning (`/api/v1/ml/*`), notification dispatch (scheduler).
 
 ---
 
@@ -337,11 +339,14 @@ Marks this child selected (others cleared).
 
 ### Recommendations (Explainable AI)
 
-Rules-based, explainable engine (no LLM). Always includes disclaimer text.
+Rules-based, explainable engine. Risk decisions come from the deterministic scorer;
+ML only adds triage confidence and simplified caregiver text. Always includes disclaimer text.
 
 #### `POST /recommendations/evaluate`
 
 Requires personalised gate.
+
+Query param (optional): `language` — `en` \| `ms` \| `ur` \| `id` (overrides `Accept-Language`).
 
 ```json
 {
@@ -352,13 +357,14 @@ Requires personalised gate.
   "conditions": { "asthma": true },
   "symptoms": { "cough": true },
   "exposures": {},
-  "allergies": {}
+  "allergies": {},
+  "language": "en"
 }
 ```
 
 If `child_id` is set, profile is loaded from DB (ownership checked). Otherwise inline age/profile fields are used.
 
-#### `GET /children/{child_id}/recommendations?lat=&lon=`
+#### `GET /children/{child_id}/recommendations?lat=&lon=&language=`
 
 Same result shape; persists a risk assessment for history/panel.
 
@@ -381,11 +387,182 @@ Same result shape; persists a risk assessment for history/panel.
   "model_version": "env-risk-heuristic-v2",
   "data_completeness": "full",
   "assessment_id": "uuid",
-  "child_id": "uuid"
+  "child_id": "uuid",
+  "language": "en",
+  "ml_prediction": {
+    "predicted_domain": "respiratory",
+    "confidence": 0.92,
+    "agrees_with_engine": true,
+    "engine_primary_domain": "respiratory",
+    "probabilities": {
+      "heat_stress": 0.04,
+      "respiratory": 0.92,
+      "dengue": 0.02,
+      "flood": 0.01,
+      "low_risk": 0.01
+    },
+    "model_version": "symptom-triage-rf-v1",
+    "note": "ML triage agrees with the deterministic engine."
+  },
+  "simplified": {
+    "summary": "Overall environmental health risk is high based on breathing, Heat Stress. Do this now: ...",
+    "why": "...",
+    "priority_actions": ["..."],
+    "secondary_actions": ["..."],
+    "monitoring_advice": ["..."],
+    "escalation_advice": ["..."],
+    "readability": {
+      "average_flesch_kincaid_grade": 8.5,
+      "why_reading_ease": 65.2
+    }
+  }
 }
 ```
 
-Guidance is **not diagnostic**. Never present actions as medical treatment.
+| Field | Notes |
+|-------|--------|
+| `ml_prediction` | Offline scikit-learn triage. **Does not change** `overall_risk` or actions. |
+| `simplified` | Caregiver-friendly rewrite of the same guidance + readability scores. Prefer this for lower-literacy UI copy. |
+| `language` | Negotiated locale used for ML note / disclaimer strings where translated. |
+
+Guidance is **not diagnostic**. Never present actions as medical treatment. When `agrees_with_engine` is `false`, keep showing the engine’s `overall_risk` / actions and optionally surface the ML note as “for review”.
+
+---
+
+### Machine Learning
+
+Base: `/api/v1/ml` — API key when configured. **No JWT required.**
+
+Design principle: the deterministic climate-health engine remains the single source of truth for risk. ML predicts a primary domain + confidence and can flag disagreement for review.
+
+#### `GET /ml/status`
+
+```json
+{
+  "classifier_loaded": true,
+  "classifier_version": "symptom-triage-rf-v1",
+  "feature_names": [
+    "age_under5", "age_child", "age_adolescent",
+    "asthma", "fever", "cough", "dehydration",
+    "mosquito_exposure", "flood_exposure",
+    "temperature", "humidity", "rainfall", "aqi", "pm2_5", "pm10"
+  ],
+  "risk_domains": ["heat_stress", "respiratory", "dengue", "flood", "low_risk"],
+  "vision_status": "not_implemented",
+  "audio_status": "not_implemented",
+  "supported_languages": ["en", "ms", "ur", "id"]
+}
+```
+
+#### `POST /ml/predict`
+
+Direct triage without fetching weather. Useful for offline demos or unit tests.
+
+```json
+{
+  "age_group": "under5",
+  "asthma": false,
+  "fever": false,
+  "cough": false,
+  "dehydration": true,
+  "mosquito_exposure": false,
+  "flood_exposure": false,
+  "temperature": 39.0,
+  "humidity": 50.0,
+  "rainfall": 0.0,
+  "aqi": 20.0,
+  "pm2_5": 8.0,
+  "pm10": 15.0
+}
+```
+
+`200` response:
+
+```json
+{
+  "prediction": {
+    "predicted_domain": "heat_stress",
+    "confidence": 1.0,
+    "agrees_with_engine": true,
+    "engine_primary_domain": "heat_stress",
+    "probabilities": {
+      "dengue": 0.0,
+      "flood": 0.0,
+      "heat_stress": 1.0,
+      "low_risk": 0.0,
+      "respiratory": 0.0
+    },
+    "model_version": "symptom-triage-rf-v1",
+    "note": "ML triage agrees with the deterministic engine."
+  },
+  "disclaimer": "ML predictions augment guidance and do not replace the deterministic risk engine or professional medical advice."
+}
+```
+
+Optional: `Accept-Language` or `?language=ms` localizes `note` / `disclaimer` when translations exist.
+
+#### `GET /ml/languages`
+
+```json
+{
+  "supported": ["en", "ms", "ur", "id"],
+  "default": "en",
+  "negotiated": "ms"
+}
+```
+
+#### `POST /ml/vision/analyze` → **501**
+
+Roadmap stub for camera-based wound / rash / nutrition analysis.
+
+```json
+{
+  "image_base64": "<base64>",
+  "analysis_type": "rash",
+  "child_age": 4
+}
+```
+
+Response (`501`):
+
+```json
+{
+  "status": "not_implemented",
+  "message": "Vision analysis is planned but not yet available. Camera-based wound/rash/nutrition guidance is on the roadmap.",
+  "analysis_type": "rash",
+  "planned_capabilities": [
+    "wound classification",
+    "rash classification",
+    "nutrition photo guidance"
+  ]
+}
+```
+
+#### `POST /ml/audio/analyze` → **501**
+
+Roadmap stub for cough-sound classification.
+
+```json
+{
+  "audio_base64": "<base64>",
+  "duration_seconds": 3.5,
+  "child_age": 4
+}
+```
+
+#### Frontend tips
+
+```javascript
+// Show ML confidence on the risk card (engine priority still drives colour / actions)
+const ml = data.ml_prediction;
+if (ml) {
+  const pct = Math.round(ml.confidence * 100);
+  // e.g. "ML Confidence 92% · RESPIRATORY · Agrees"
+}
+
+// Prefer simplified actions for caregiver-facing copy
+const actions = data.simplified?.immediate ?? data.recommended_action?.immediate;
+```
 
 ---
 
@@ -616,11 +793,16 @@ Query params:
 | `domain_labels` | object | Display-ready names: `{ "heat_stress": "Heat Stress", "respiratory": "Respiratory", "dengue": "Dengue", "flood": "Flood" }` |
 | `model_version` | string | Scoring model version |
 | `disclaimer` | string | Medical disclaimer text |
+| `ml_prediction` | object \| null | Offline triage: `predicted_domain`, `confidence`, `agrees_with_engine`, `engine_primary_domain`, `model_version`, `note` |
+| `simplified` | object \| null | Caregiver-friendly: `summary`, `immediate`, `when_to_escalate`, `average_flesch_kincaid_grade` |
+| `language` | string | Negotiated locale (default `en`) |
 
 **Notes:**
 - `risks` contains **current** (real-time) risk levels based on live weather data.
 - `predictive_domains` contains **forecast-based** risk levels that account for upcoming weather conditions over the next 7 days. Values may differ from `risks` for the same domain.
 - `domain_labels` maps JSON field keys (e.g. `heat_stress`) to display-ready labels (e.g. `"Heat Stress"`). Use these labels in the UI instead of formatting keys manually.
+- `priority_alert` and `recommended_action` always come from the **deterministic engine**. Use `ml_prediction` as a confidence / review signal only.
+- Prefer `simplified.immediate` / `simplified.summary` for caregiver-facing copy when present.
 
 #### Legacy
 
@@ -644,10 +826,12 @@ Query params:
 ### Daily risk check
 
 1. Get location  
-2. `GET /children/{id}/recommendations?lat=&lon=` *(or legacy `GET /environment-risk`)*  
-3. Render `explanation`, `priority_actions`, always show `disclaimer`  
-4. `POST /engagement/track` with `event_type: "risk_check"` and priority in `metadata`  
-5. Refresh panel overview
+2. `GET /children/{id}/recommendations?lat=&lon=` *(or `GET /api/v1/environment-risk`)*  
+3. Render engine fields: `priority_alert` / `explanation` / `priority_actions` — always show `disclaimer`  
+4. Optionally show `ml_prediction.confidence` + domain badge; if `agrees_with_engine` is false, keep engine actions and show the ML note as secondary  
+5. Prefer `simplified` text for caregiver-facing lists when available  
+6. `POST /engagement/track` with `event_type: "risk_check"` and priority in `metadata`  
+7. Refresh panel overview
 
 ### Share alert summary
 
@@ -704,6 +888,16 @@ See [`backend/README.md`](../backend/README.md) for details.
 ---
 
 ## Changelog
+
+### 1.3 — 2026-08-06
+
+- **Symptom triage ML:** scikit-learn Random Forest (`symptom-triage-rf-v1`) predicts primary risk domain + confidence from child factors and environment. Trained on synthetic labels derived from the existing scoring rules.
+- **ML API:** `GET /api/v1/ml/status`, `POST /api/v1/ml/predict`, `GET /api/v1/ml/languages`.
+- **Vision / audio stubs:** `POST /api/v1/ml/vision/analyze` and `POST /api/v1/ml/audio/analyze` return `501` with planned capability contracts.
+- **Text simplifier:** caregiver-friendly rewrite + Flesch-Kincaid readability on recommendations and environment-risk responses (`simplified` field).
+- **Response enrichment:** `ml_prediction`, `simplified`, and `language` on recommendation and environment-risk payloads. Deterministic engine remains decision-maker.
+- **i18n skeleton:** `Accept-Language` middleware (`Content-Language` response header), `language` query/body on recommendations; supported codes `en`, `ms`, `ur`, `id`.
+- **Frontend:** home risk card can display ML confidence and simplified actions.
 
 ### 1.2 — 2026-08-03
 

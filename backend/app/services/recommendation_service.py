@@ -5,9 +5,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.open_meteo import OpenMeteoClient
 from app.core.config import Settings
-from app.domain.ai_engine import build_explainable_recommendation
+from app.domain.ai_engine import age_to_group, build_explainable_recommendation
+from app.ml.i18n import parse_accept_language, translate_key
+from app.ml.symptom_classifier import predict_triage
+from app.ml.text_simplifier import simplify_recommendation_bundle
 from app.models.assessment import RiskAssessment
-from app.schemas.recommendation import RecommendationEvaluateRequest, RecommendationResult
+from app.schemas.ml import MLPredictionResult, SimplifiedRecommendation
+from app.schemas.recommendation import (
+    RecommendationEvaluateRequest,
+    RecommendationResult,
+)
 from app.services.child_service import ChildService
 
 
@@ -29,6 +36,7 @@ class RecommendationService:
         payload: RecommendationEvaluateRequest,
         *,
         persist: bool = True,
+        accept_language: str | None = None,
     ) -> RecommendationResult:
         age = payload.age
         conditions = payload.conditions
@@ -36,6 +44,7 @@ class RecommendationService:
         symptoms = payload.symptoms
         exposures = payload.exposures
         child_id = payload.child_id
+        language = payload.language or parse_accept_language(accept_language)
 
         if child_id is not None:
             if caregiver_id is None:
@@ -60,6 +69,55 @@ class RecommendationService:
             exposures=exposures,
         )
 
+        risks = {
+            "heat_stress": result.assessment.heat.level,
+            "respiratory": result.assessment.respiratory.level,
+            "dengue": result.assessment.dengue.level,
+            "flood": result.assessment.flood.level,
+        }
+        age_group = age_to_group(age)
+        ml = predict_triage(
+            age_group=age_group,
+            asthma=bool(
+                conditions.get("asthma") or conditions.get("history_of_asthma")
+            ),
+            fever=bool(symptoms.get("fever")),
+            cough=bool(symptoms.get("cough") or symptoms.get("wheezing")),
+            dehydration=bool(
+                symptoms.get("dehydration")
+                or symptoms.get("signs_of_dehydration")
+                or symptoms.get("reduced_fluid_intake")
+            ),
+            mosquito_exposure=bool(exposures.get("mosquito_exposure")),
+            flood_exposure=bool(
+                exposures.get("floodwater") or exposures.get("flood_exposure")
+            ),
+            temperature=obs.temperature,
+            humidity=obs.humidity,
+            rainfall=obs.rainfall,
+            aqi=obs.aqi,
+            pm2_5=obs.pm2_5,
+            pm10=obs.pm10,
+        )
+        note_key = "ml.agrees" if ml.agrees_with_engine else "ml.differs"
+        ml_prediction = MLPredictionResult(
+            predicted_domain=ml.predicted_domain,
+            confidence=ml.confidence,
+            agrees_with_engine=ml.agrees_with_engine,
+            engine_primary_domain=ml.engine_primary_domain,
+            probabilities=ml.probabilities,
+            model_version=ml.model_version,
+            note=translate_key(note_key, language),
+        )
+        simplified_raw = simplify_recommendation_bundle(
+            why=result.why,
+            priority_actions=result.priority_actions,
+            secondary_actions=result.secondary_actions,
+            monitoring_advice=result.monitoring_advice,
+            escalation_advice=result.escalation_advice,
+        )
+        simplified = SimplifiedRecommendation(**simplified_raw)
+
         assessment_id = None
         if persist and child_id is not None:
             row = RiskAssessment(
@@ -79,6 +137,9 @@ class RecommendationService:
                     "escalation_advice": result.escalation_advice,
                     "data_completeness": result.data_completeness,
                     "model_version": self.settings.model_version,
+                    "ml_prediction": ml_prediction.model_dump(),
+                    "simplified": simplified.model_dump(),
+                    "language": language,
                     "environment": {
                         "temperature": obs.temperature,
                         "humidity": obs.humidity,
@@ -87,12 +148,7 @@ class RecommendationService:
                         "pm2_5": obs.pm2_5,
                         "pm10": obs.pm10,
                     },
-                    "risks": {
-                        "heat_stress": result.assessment.heat.level,
-                        "respiratory": result.assessment.respiratory.level,
-                        "dengue": result.assessment.dengue.level,
-                        "flood": result.assessment.flood.level,
-                    },
+                    "risks": risks,
                 },
             )
             self.db.add(row)
@@ -123,12 +179,10 @@ class RecommendationService:
                 "pm2_5": obs.pm2_5,
                 "pm10": obs.pm10,
             },
-            risks={
-                "heat_stress": result.assessment.heat.level,
-                "respiratory": result.assessment.respiratory.level,
-                "dengue": result.assessment.dengue.level,
-                "flood": result.assessment.flood.level,
-            },
+            risks=risks,
             child_id=child_id,
             assessment_id=assessment_id,
+            ml_prediction=ml_prediction,
+            simplified=simplified,
+            language=language,
         )

@@ -1,6 +1,13 @@
-# Welcome to your Expo app 👋
+# Child Guard — Mobile App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Expo / React Native client for Child Guard environmental child-health monitoring.
+
+The home risk screen calls the backend environment-risk API and can display:
+
+- **ML Confidence** — `ml_prediction.confidence` / predicted domain (engine still drives risk level)
+- **Simplified actions** — `simplified.immediate` / `simplified.summary` when present
+
+Full API shapes: [`API_DOCUMENTATION.md`](../API_DOCUMENTATION.md#machine-learning).
 
 ## Get started
 

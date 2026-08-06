@@ -120,6 +120,22 @@ class DomainLabels(BaseModel):
     flood: str = "Flood"
 
 
+class MLPredictionSummary(BaseModel):
+    predicted_domain: str
+    confidence: float
+    agrees_with_engine: bool
+    engine_primary_domain: str
+    model_version: str
+    note: str
+
+
+class SimplifiedActions(BaseModel):
+    summary: str
+    immediate: list[str]
+    when_to_escalate: list[str]
+    average_flesch_kincaid_grade: float | None = None
+
+
 class EnvironmentRiskResponse(BaseModel):
     location: Location
     age_group: AgeGroup
@@ -139,6 +155,9 @@ class EnvironmentRiskResponse(BaseModel):
     domain_labels: DomainLabels
     model_version: str
     disclaimer: str
+    ml_prediction: MLPredictionSummary | None = None
+    simplified: SimplifiedActions | None = None
+    language: str = "en"
 
 
 class BatchRiskItem(BaseModel):

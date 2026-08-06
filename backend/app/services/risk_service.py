@@ -11,6 +11,8 @@ from app.domain.recommendations import (
     build_trend,
 )
 from app.domain.scoring import ChildFactors, assess_risks
+from app.ml.symptom_classifier import predict_triage
+from app.ml.text_simplifier import simplify_list, simplify_text
 from app.schemas.risk import (
     BatchLocation,
     BatchRiskItem,
@@ -24,10 +26,12 @@ from app.schemas.risk import (
     Escalation,
     ForecastDay,
     Guidance,
+    MLPredictionSummary,
     PredictiveDomains,
     RecommendedAction,
     RiskQueryParams,
     RiskReasons,
+    SimplifiedActions,
     StakeholderGuidance,
     Trend,
 )
@@ -66,6 +70,41 @@ class RiskService:
         escalation = build_escalation(assessment.forecast)
         guidance = build_guidance(assessment, factors)
 
+        risks = DomainRisks(
+            heat_stress=assessment.heat.level,
+            respiratory=assessment.respiratory.level,
+            dengue=assessment.dengue.level,
+            flood=assessment.flood.level,
+        )
+        ml = predict_triage(
+            age_group=query.age_group,
+            asthma=query.asthma,
+            fever=query.fever,
+            cough=query.cough,
+            dehydration=query.dehydration,
+            mosquito_exposure=query.mosquito_exposure,
+            flood_exposure=query.flood_exposure,
+            temperature=obs.temperature,
+            humidity=obs.humidity,
+            rainfall=obs.rainfall,
+            aqi=obs.aqi,
+            pm2_5=obs.pm2_5,
+            pm10=obs.pm10,
+        )
+        simplified_immediate = simplify_list(recommended.immediate)
+        simplified_escalate = simplify_list(recommended.when_to_escalate)
+        action_text = build_action_message(assessment.priority_alert)
+        simplified_action = simplify_text(action_text)
+        grades = [
+            simplify_text(item).flesch_kincaid_grade
+            for item in [
+                *recommended.immediate,
+                *recommended.when_to_escalate,
+                action_text,
+            ]
+        ]
+        avg_grade = round(sum(grades) / len(grades), 2) if grades else None
+
         return EnvironmentRiskResponse(
             location=Location(lat=query.lat, lon=query.lon),
             age_group=query.age_group,
@@ -77,12 +116,7 @@ class RiskService:
                 pm2_5=obs.pm2_5,
                 pm10=obs.pm10,
             ),
-            risks=DomainRisks(
-                heat_stress=assessment.heat.level,
-                respiratory=assessment.respiratory.level,
-                dengue=assessment.dengue.level,
-                flood=assessment.flood.level,
-            ),
+            risks=risks,
             risk_reasons=RiskReasons(
                 heat_stress=assessment.heat.reasons,
                 respiratory=assessment.respiratory.reasons,
@@ -109,7 +143,7 @@ class RiskService:
                 )
                 for day in assessment.forecast
             ],
-            action=build_action_message(assessment.priority_alert),
+            action=action_text,
             recommended_action=RecommendedAction(
                 immediate=recommended.immediate,
                 caregiver=recommended.caregiver,
@@ -118,9 +152,7 @@ class RiskService:
                 when_to_escalate=recommended.when_to_escalate,
             ),
             trend=Trend(direction=trend.direction, message=trend.message),
-            escalation=Escalation(
-                level=escalation.level, reason=escalation.reason
-            ),
+            escalation=Escalation(level=escalation.level, reason=escalation.reason),
             guidance=Guidance(
                 group=query.age_group,
                 summary=guidance.summary,
@@ -134,6 +166,21 @@ class RiskService:
             domain_labels=DomainLabels(),
             model_version=self._settings.model_version,
             disclaimer=self._settings.disclaimer,
+            ml_prediction=MLPredictionSummary(
+                predicted_domain=ml.predicted_domain,
+                confidence=ml.confidence,
+                agrees_with_engine=ml.agrees_with_engine,
+                engine_primary_domain=ml.engine_primary_domain,
+                model_version=ml.model_version,
+                note=ml.note,
+            ),
+            simplified=SimplifiedActions(
+                summary=simplified_action.simplified,
+                immediate=simplified_immediate,
+                when_to_escalate=simplified_escalate,
+                average_flesch_kincaid_grade=avg_grade,
+            ),
+            language="en",
         )
 
     async def evaluate_batch(self, request: BatchRiskRequest) -> BatchRiskResponse:
