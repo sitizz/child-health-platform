@@ -7,8 +7,8 @@ from app.clients.open_meteo import OpenMeteoClient
 from app.core.config import Settings
 from app.domain.ai_engine import age_to_group, build_explainable_recommendation
 from app.ml.i18n import parse_accept_language, translate_key
+from app.ml.llm_communicator import LLMCommunicator
 from app.ml.symptom_classifier import predict_triage
-from app.ml.text_simplifier import simplify_recommendation_bundle
 from app.models.assessment import RiskAssessment
 from app.schemas.ml import MLPredictionResult, SimplifiedRecommendation
 from app.schemas.recommendation import (
@@ -24,10 +24,12 @@ class RecommendationService:
         db: AsyncSession,
         settings: Settings,
         open_meteo: OpenMeteoClient,
+        llm: LLMCommunicator | None = None,
     ) -> None:
         self.db = db
         self.settings = settings
         self.open_meteo = open_meteo
+        self.llm = llm
         self.children = ChildService(db, settings)
 
     async def evaluate(
@@ -109,13 +111,28 @@ class RecommendationService:
             model_version=ml.model_version,
             note=translate_key(note_key, language),
         )
-        simplified_raw = simplify_recommendation_bundle(
-            why=result.why,
-            priority_actions=result.priority_actions,
-            secondary_actions=result.secondary_actions,
-            monitoring_advice=result.monitoring_advice,
-            escalation_advice=result.escalation_advice,
-        )
+
+        if self.llm is not None:
+            simplified_raw = await self.llm.simplify_recommendation_bundle(
+                why=result.why,
+                priority_actions=result.priority_actions,
+                secondary_actions=result.secondary_actions,
+                monitoring_advice=result.monitoring_advice,
+                escalation_advice=result.escalation_advice,
+                language=language,
+            )
+        else:
+            from app.ml.text_simplifier import simplify_recommendation_bundle
+
+            simplified_raw = simplify_recommendation_bundle(
+                why=result.why,
+                priority_actions=result.priority_actions,
+                secondary_actions=result.secondary_actions,
+                monitoring_advice=result.monitoring_advice,
+                escalation_advice=result.escalation_advice,
+            )
+            simplified_raw["source"] = "rules"
+            simplified_raw["llm_model"] = None
         simplified = SimplifiedRecommendation(**simplified_raw)
 
         assessment_id = None

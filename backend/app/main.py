@@ -18,6 +18,7 @@ from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.middleware import RequestContextMiddleware
+from app.ml.llm_communicator import LLMCommunicator
 from app.services.cache import InMemoryCache, RedisCache
 
 logger = get_logger(__name__)
@@ -26,7 +27,10 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    timeout = httpx.Timeout(settings.open_meteo_timeout_seconds, connect=2.0)
+    timeout = httpx.Timeout(
+        max(settings.open_meteo_timeout_seconds, settings.gemini_timeout_seconds),
+        connect=2.0,
+    )
     http_client = httpx.AsyncClient(
         timeout=timeout, headers={"User-Agent": "ChildGuard/1.0"}
     )
@@ -57,6 +61,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.redis = None
         app.state.cache = InMemoryCache()
         logger.info("cache_backend", backend="memory")
+
+    app.state.llm = LLMCommunicator(
+        http_client=http_client,
+        settings=settings,
+        cache=app.state.cache,
+    )
+    logger.info(
+        "llm_communicator",
+        enabled=app.state.llm.enabled,
+        model=settings.gemini_model if app.state.llm.enabled else None,
+    )
 
     logger.info("app_started", env=settings.app_env, version=settings.app_version)
     try:

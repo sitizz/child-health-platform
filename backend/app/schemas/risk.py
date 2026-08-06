@@ -134,6 +134,8 @@ class SimplifiedActions(BaseModel):
     immediate: list[str]
     when_to_escalate: list[str]
     average_flesch_kincaid_grade: float | None = None
+    source: str = "rules"
+    llm_model: str | None = None
 
 
 class EnvironmentRiskResponse(BaseModel):

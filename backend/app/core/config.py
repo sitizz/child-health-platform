@@ -17,9 +17,7 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     log_level: str = "INFO"
 
-    cors_origins: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["*"]
-    )
+    cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["*"])
     api_key: str | None = None
     rate_limit: str = "60/minute"
 
@@ -57,6 +55,12 @@ class Settings(BaseSettings):
     notification_cooldown_minutes: int = 180
     max_children_per_caregiver: int = 10
 
+    # Gemini LLM communication layer (rewrite / summarize / translate only)
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.0-flash"
+    gemini_timeout_seconds: float = 12.0
+    gemini_cache_ttl_seconds: int = 3600
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: object) -> object:
@@ -70,6 +74,7 @@ class Settings(BaseSettings):
         "expo_access_token",
         "redis_url",
         "open_meteo_api_key",
+        "gemini_api_key",
         mode="before",
     )
     @classmethod

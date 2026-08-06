@@ -15,6 +15,8 @@ async def test_ml_status(client: AsyncClient):
     assert data["vision_status"] == "not_implemented"
     assert data["audio_status"] == "not_implemented"
     assert "en" in data["supported_languages"]
+    assert "llm_enabled" in data
+    assert data["llm_provider"] == "gemini"
 
 
 @pytest.mark.asyncio

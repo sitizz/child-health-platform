@@ -27,6 +27,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.domain.scoring import EnvironmentObservation
 from app.main import create_app
+from app.ml.llm_communicator import LLMCommunicator
 from app.services.cache import InMemoryCache
 
 
@@ -100,6 +101,12 @@ async def client(
     app.state.open_meteo = OpenMeteoClient(http_client, settings)
     app.state.redis = None
     app.state.cache = InMemoryCache()
+    # Tests use rule-based fallback unless a case mocks Gemini HTTP
+    app.state.llm = LLMCommunicator(
+        http_client=http_client,
+        settings=settings,
+        cache=app.state.cache,
+    )
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

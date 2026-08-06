@@ -11,6 +11,7 @@ from app.domain.recommendations import (
     build_trend,
 )
 from app.domain.scoring import ChildFactors, assess_risks
+from app.ml.llm_communicator import LLMCommunicator
 from app.ml.symptom_classifier import predict_triage
 from app.ml.text_simplifier import simplify_list, simplify_text
 from app.schemas.risk import (
@@ -47,10 +48,12 @@ class RiskService:
         open_meteo: OpenMeteoClient,
         cache: CacheBackend,
         settings: Settings,
+        llm: LLMCommunicator | None = None,
     ) -> None:
         self._open_meteo = open_meteo
         self._cache = cache
         self._settings = settings
+        self._llm = llm
 
     async def evaluate(self, query: RiskQueryParams) -> EnvironmentRiskResponse:
         factors = ChildFactors(
@@ -91,19 +94,36 @@ class RiskService:
             pm2_5=obs.pm2_5,
             pm10=obs.pm10,
         )
-        simplified_immediate = simplify_list(recommended.immediate)
-        simplified_escalate = simplify_list(recommended.when_to_escalate)
         action_text = build_action_message(assessment.priority_alert)
-        simplified_action = simplify_text(action_text)
-        grades = [
-            simplify_text(item).flesch_kincaid_grade
-            for item in [
-                *recommended.immediate,
-                *recommended.when_to_escalate,
-                action_text,
+        if self._llm is not None:
+            simplified_raw = await self._llm.simplify_risk_actions(
+                summary=action_text,
+                immediate=recommended.immediate,
+                when_to_escalate=recommended.when_to_escalate,
+                language="en",
+            )
+        else:
+            simplified_immediate = simplify_list(recommended.immediate)
+            simplified_escalate = simplify_list(recommended.when_to_escalate)
+            simplified_action = simplify_text(action_text)
+            grades = [
+                simplify_text(item).flesch_kincaid_grade
+                for item in [
+                    *recommended.immediate,
+                    *recommended.when_to_escalate,
+                    action_text,
+                ]
             ]
-        ]
-        avg_grade = round(sum(grades) / len(grades), 2) if grades else None
+            simplified_raw = {
+                "summary": simplified_action.simplified,
+                "immediate": simplified_immediate,
+                "when_to_escalate": simplified_escalate,
+                "average_flesch_kincaid_grade": (
+                    round(sum(grades) / len(grades), 2) if grades else None
+                ),
+                "source": "rules",
+                "llm_model": None,
+            }
 
         return EnvironmentRiskResponse(
             location=Location(lat=query.lat, lon=query.lon),
@@ -175,10 +195,14 @@ class RiskService:
                 note=ml.note,
             ),
             simplified=SimplifiedActions(
-                summary=simplified_action.simplified,
-                immediate=simplified_immediate,
-                when_to_escalate=simplified_escalate,
-                average_flesch_kincaid_grade=avg_grade,
+                summary=simplified_raw["summary"],
+                immediate=simplified_raw["immediate"],
+                when_to_escalate=simplified_raw["when_to_escalate"],
+                average_flesch_kincaid_grade=simplified_raw.get(
+                    "average_flesch_kincaid_grade"
+                ),
+                source=simplified_raw.get("source", "rules"),
+                llm_model=simplified_raw.get("llm_model"),
             ),
             language="en",
         )

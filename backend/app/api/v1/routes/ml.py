@@ -23,6 +23,7 @@ router = APIRouter(prefix="/ml", tags=["Machine Learning"])
     summary="ML module status",
 )
 async def ml_status(
+    settings: Settings = Depends(get_settings),
     _: None = Depends(require_api_key),
 ) -> MLStatusResponse:
     get_classifier()  # ensure model is loaded (trains on first use if missing)
@@ -32,6 +33,9 @@ async def ml_status(
         feature_names=FEATURE_NAMES,
         risk_domains=RISK_DOMAINS,
         supported_languages=list(SUPPORTED_LANGUAGES),
+        llm_enabled=bool(settings.gemini_api_key),
+        llm_provider="gemini",
+        llm_model=settings.gemini_model if settings.gemini_api_key else None,
     )
 
 

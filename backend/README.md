@@ -84,7 +84,8 @@ or medical guidance.
 | Symptom triage classifier | `app/ml/symptom_classifier.py` | scikit-learn Random Forest (`symptom-triage-rf-v1`) |
 | Training data generator | `app/ml/training_data.py` | Synthetic labels from `domain/scoring.py` thresholds |
 | Persisted model | `app/ml/models/symptom_triage_rf.joblib` | Committed artifact for reviewers / deploy |
-| Text simplifier | `app/ml/text_simplifier.py` | Rule-based rewrite + Flesch-Kincaid grade |
+| LLM communication layer | `app/ml/llm_communicator.py` | Google Gemini rewrite / summary / translate |
+| Offline text simplifier | `app/ml/text_simplifier.py` | Fallback when `GEMINI_API_KEY` is unset |
 | Vision / audio stubs | `app/ml/vision/`, `app/ml/audio/` | API contracts; return HTTP `501` |
 | i18n skeleton | `app/ml/i18n/` | `en`, `ms`, `ur`, `id` |
 
@@ -101,8 +102,21 @@ or medical guidance.
 Risk and recommendation responses also include:
 
 - `ml_prediction` — predicted domain, confidence, engine agreement, note
-- `simplified` — caregiver-friendly summary / actions + readability
+- `simplified` — caregiver-friendly summary / actions + readability (`source`: `gemini` or `rules`)
 - `language` — negotiated locale (`Accept-Language` or `?language=`)
+
+**Gemini env vars** (set in `.env` / Render; never commit the key):
+
+```env
+GEMINI_API_KEY=your-key
+GEMINI_MODEL=gemini-2.0-flash
+```
+
+The LLM may only rewrite / summarize / translate **approved** engine text. Every response is
+validated server-side (grounded prompt, `temperature=0`, exact list lengths, no diagnosis /
+medicine / dosage language, no novel clinical terms, per-bullet faithfulness). If the key is
+missing, Gemini errors, or validation fails, the API falls back to the offline rule-based
+simplifier and reports `simplified.source = "rules"`.
 
 **Retrain the classifier** (Docker, preferred so sklearn matches the image):
 
@@ -179,6 +193,10 @@ TERMS_URL=https://child-health-platform.onrender.com/terms
 
 NOTIFICATION_COOLDOWN_MINUTES=180
 MAX_CHILDREN_PER_CAREGIVER=10
+
+# Gemini LLM communication layer (rewrite/summarize/translate only)
+GEMINI_API_KEY=<your-gemini-api-key>
+GEMINI_MODEL=gemini-2.0-flash
 ```
 
 Optional:
@@ -186,6 +204,8 @@ Optional:
 ```env
 # REDIS_URL=redis://…          # omit → in-memory cache
 # EXPO_ACCESS_TOKEN=…          # Expo push from server
+# GEMINI_TIMEOUT_SECONDS=12
+# GEMINI_CACHE_TTL_SECONDS=3600
 ```
 
 ### `DATABASE_URL` tip
@@ -209,6 +229,7 @@ Do **not** use the local Compose URL (`localhost` / `childguard:childguard`).
 1. `GET /healthz` → `200`
 2. `GET /readyz` → `database: ok` (may be `degraded` if Open-Meteo blips)
 3. Risk call with `X-API-Key` still works and returns `ml_prediction` + `simplified`
-4. `GET /api/v1/ml/status` → `classifier_loaded: true`
-5. `POST /api/v1/auth/register` works (needs Postgres + migrate)
-6. Mobile app: keep sending `X-API-Key`; new flows also need JWT after login
+4. `GET /api/v1/ml/status` → `classifier_loaded: true`, `llm_enabled: true` (when `GEMINI_API_KEY` is set)
+5. Risk/recommendations `simplified.source` is `gemini` when LLM succeeds (else `rules` fallback)
+6. `POST /api/v1/auth/register` works (needs Postgres + migrate)
+7. Mobile app: keep sending `X-API-Key`; new flows also need JWT after login
