@@ -25,6 +25,11 @@ EXPECTED_OPENAPI_PATHS = {
     "/api/v1/devices",
     "/api/v1/engagement/track",
     "/api/v1/engagement/metrics",
+    "/api/v1/ml/status",
+    "/api/v1/ml/predict",
+    "/api/v1/ml/vision/analyze",
+    "/api/v1/ml/audio/analyze",
+    "/api/v1/ml/languages",
 }
 
 

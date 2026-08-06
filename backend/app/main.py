@@ -27,7 +27,9 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     timeout = httpx.Timeout(settings.open_meteo_timeout_seconds, connect=2.0)
-    http_client = httpx.AsyncClient(timeout=timeout, headers={"User-Agent": "ChildGuard/1.0"})
+    http_client = httpx.AsyncClient(
+        timeout=timeout, headers={"User-Agent": "ChildGuard/1.0"}
+    )
     app.state.http_client = http_client
     app.state.open_meteo = OpenMeteoClient(http_client, settings)
 
@@ -97,7 +99,13 @@ def create_app() -> FastAPI:
         allow_origins=cors_origins,
         allow_credentials=allow_credentials,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "X-API-Key",
+            "X-Request-ID",
+            "Accept-Language",
+        ],
     )
 
     register_exception_handlers(app)
@@ -119,17 +127,38 @@ def create_app() -> FastAPI:
                 {"name": "Health", "description": "Liveness and readiness"},
                 {"name": "Auth", "description": "Caregiver registration and JWT"},
                 {"name": "Consent", "description": "Informed consent management"},
-                {"name": "Disclaimer", "description": "Medical disclaimer acknowledgements"},
+                {
+                    "name": "Disclaimer",
+                    "description": "Medical disclaimer acknowledgements",
+                },
                 {"name": "Children", "description": "Multi-child profiles (max 10)"},
-                {"name": "Recommendations", "description": "Explainable AI recommendations"},
-                {"name": "ParentPanel", "description": "Household overview and history"},
+                {
+                    "name": "Recommendations",
+                    "description": "Explainable AI recommendations",
+                },
+                {
+                    "name": "ParentPanel",
+                    "description": "Household overview and history",
+                },
                 {"name": "Devices", "description": "Expo push token registry"},
                 {"name": "Notifications", "description": "Push dispatch and tests"},
-                {"name": "Environment Risk", "description": "Environmental risk scoring"},
+                {
+                    "name": "Environment Risk",
+                    "description": "Environmental risk scoring",
+                },
+                {
+                    "name": "Machine Learning",
+                    "description": (
+                        "Symptom triage classifier, caregiver text simplification, "
+                        "and planned vision/audio analysis endpoints"
+                    ),
+                },
                 {"name": "Legacy", "description": "Deprecated unversioned routes"},
             ],
         )
-        components = schema.setdefault("components", {}).setdefault("securitySchemes", {})
+        components = schema.setdefault("components", {}).setdefault(
+            "securitySchemes", {}
+        )
         components["ApiKeyAuth"] = {
             "type": "apiKey",
             "in": "header",

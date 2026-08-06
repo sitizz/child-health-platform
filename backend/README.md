@@ -1,8 +1,8 @@
 # Child Guard API
 
 Production-oriented FastAPI backend for environmental child-health risk guidance,
-caregiver accounts, multi-child profiles, explainable recommendations, parent panel,
-and Expo push notifications.
+caregiver accounts, multi-child profiles, explainable recommendations, ML triage
+augmentation, parent panel, and Expo push notifications.
 
 ## Preferred local stack (Docker Compose)
 
@@ -69,8 +69,51 @@ uvicorn main:app --reload --port 8000
 | Consent / disclaimer | `/api/v1/consent/*`, `/api/v1/disclaimer/*` | API key + JWT |
 | Children | `/api/v1/children` | API key + JWT + consent + disclaimer |
 | Recommendations | `/api/v1/recommendations/*`, `/api/v1/children/{id}/recommendations` | same gate |
+| Machine Learning | `/api/v1/ml/*` | API key when configured |
 | Parent panel | `/api/v1/panel/*` | same gate |
 | Devices / push | `/api/v1/devices`, `/api/v1/notifications/*` | personalised / API key for dispatch |
+
+### AI/ML layer
+
+The **deterministic scoring engine remains the decision-maker**. ML augments it
+with triage confidence and caregiver-friendly text — it never overrides risk scores
+or medical guidance.
+
+| Component | Location | Notes |
+|-----------|----------|--------|
+| Symptom triage classifier | `app/ml/symptom_classifier.py` | scikit-learn Random Forest (`symptom-triage-rf-v1`) |
+| Training data generator | `app/ml/training_data.py` | Synthetic labels from `domain/scoring.py` thresholds |
+| Persisted model | `app/ml/models/symptom_triage_rf.joblib` | Committed artifact for reviewers / deploy |
+| Text simplifier | `app/ml/text_simplifier.py` | Rule-based rewrite + Flesch-Kincaid grade |
+| Vision / audio stubs | `app/ml/vision/`, `app/ml/audio/` | API contracts; return HTTP `501` |
+| i18n skeleton | `app/ml/i18n/` | `en`, `ms`, `ur`, `id` |
+
+**ML routes** (`X-API-Key` when configured):
+
+| Method | Path | Status |
+|--------|------|--------|
+| `GET` | `/api/v1/ml/status` | Classifier metadata |
+| `POST` | `/api/v1/ml/predict` | Direct triage prediction |
+| `GET` | `/api/v1/ml/languages` | Supported + negotiated language |
+| `POST` | `/api/v1/ml/vision/analyze` | `501` roadmap stub |
+| `POST` | `/api/v1/ml/audio/analyze` | `501` roadmap stub |
+
+Risk and recommendation responses also include:
+
+- `ml_prediction` — predicted domain, confidence, engine agreement, note
+- `simplified` — caregiver-friendly summary / actions + readability
+- `language` — negotiated locale (`Accept-Language` or `?language=`)
+
+**Retrain the classifier** (Docker, preferred so sklearn matches the image):
+
+```bash
+cd backend
+docker compose run --rm --entrypoint "" api python scripts/train_classifier.py
+# model writes to app/ml/models/symptom_triage_rf.joblib (bind-mounted)
+docker compose restart api
+```
+
+See [`API_DOCUMENTATION.md`](../API_DOCUMENTATION.md#machine-learning) for request/response shapes.
 
 ## Auth model
 
@@ -165,6 +208,7 @@ Do **not** use the local Compose URL (`localhost` / `childguard:childguard`).
 
 1. `GET /healthz` → `200`
 2. `GET /readyz` → `database: ok` (may be `degraded` if Open-Meteo blips)
-3. Risk call with `X-API-Key` still works
-4. `POST /api/v1/auth/register` works (needs Postgres + migrate)
-5. Mobile app: keep sending `X-API-Key`; new flows also need JWT after login
+3. Risk call with `X-API-Key` still works and returns `ml_prediction` + `simplified`
+4. `GET /api/v1/ml/status` → `classifier_loaded: true`
+5. `POST /api/v1/auth/register` works (needs Postgres + migrate)
+6. Mobile app: keep sending `X-API-Key`; new flows also need JWT after login
