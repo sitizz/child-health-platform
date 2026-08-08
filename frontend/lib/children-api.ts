@@ -36,6 +36,30 @@ export type Explanation = {
   child_factors: string[];
 };
 
+/** Offline scikit-learn triage. Advisory only — never changes overall_risk. */
+export type MlPrediction = {
+  predicted_domain: string;
+  confidence: number;
+  agrees_with_engine: boolean;
+  engine_primary_domain: string;
+  probabilities?: Record<string, number>;
+  model_version: string;
+  note: string;
+};
+
+/** Caregiver-friendly rewrite of the same guidance (Gemini or rules fallback). */
+export type SimplifiedGuidance = {
+  summary?: string;
+  why?: string;
+  priority_actions?: string[];
+  secondary_actions?: string[];
+  monitoring_advice?: string[];
+  escalation_advice?: string[];
+  readability?: { average_flesch_kincaid_grade?: number; why_reading_ease?: number };
+  source?: 'gemini' | 'rules';
+  llm_model?: string | null;
+};
+
 export type RecommendationResult = {
   overall_risk: RiskLevel;
   primary_hazards: string[];
@@ -51,6 +75,9 @@ export type RecommendationResult = {
   risks?: Record<string, string> | null;
   child_id?: string | null;
   assessment_id?: string | null;
+  language?: string;
+  ml_prediction?: MlPrediction | null;
+  simplified?: SimplifiedGuidance | null;
 };
 
 export function listChildren(): Promise<ServerChild[]> {

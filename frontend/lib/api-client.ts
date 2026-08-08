@@ -8,6 +8,22 @@ const TIMEOUT_MS = 60000; // Render free-tier cold starts can be slow.
 const ACCESS_KEY = 'accessToken';
 const REFRESH_KEY = 'refreshToken';
 
+// Server supports these; anything else negotiates to English.
+const SUPPORTED_LANGUAGES = ['en', 'ms', 'ur', 'id'];
+
+function deviceLanguage(): string {
+  try {
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale || 'en';
+    const base = locale.split('-')[0].toLowerCase();
+    return SUPPORTED_LANGUAGES.includes(base) ? base : 'en';
+  } catch {
+    return 'en';
+  }
+}
+
+// Negotiates translated `simplified` / disclaimer copy where the server has it.
+const ACCEPT_LANGUAGE = `${deviceLanguage()},en;q=0.8`;
+
 export async function getAccessToken(): Promise<string | null> {
   return AsyncStorage.getItem(ACCESS_KEY);
 }
@@ -47,7 +63,7 @@ async function rawFetch(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { 'Accept-Language': ACCEPT_LANGUAGE };
   if (API_KEY) headers['X-API-Key'] = API_KEY;
   if (body !== undefined && body !== null) headers['Content-Type'] = 'application/json';
   if (access) headers.Authorization = `Bearer ${access}`;

@@ -49,6 +49,8 @@ export type EnvironmentRisk = {
   trend: { direction: string; message: string };
   escalation: { level: string; reason: string };
   guidance: { group: string; summary: string; key_points?: string[] };
+  // Display-ready names, e.g. { heat_stress: "Heat Stress" } — added in API 1.1.
+  domain_labels?: Record<string, string>;
 };
 
 /**

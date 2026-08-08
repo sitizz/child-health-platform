@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@/lib/api';
 import { createChild } from '@/lib/children-api';
 import { routeForGateError } from '@/lib/gate';
-import { registerPushDevice } from '@/lib/push';
+import { enableLocalNotifications } from '@/lib/notifications';
 
 const AGE_MIN = 0;
 const AGE_MAX = 18;
@@ -78,8 +78,8 @@ export default function ProfileSetupScreen() {
         is_selected: true,
       });
 
-      // Register for push now that consent + a child exist (best effort).
-      registerPushDevice().catch(() => {});
+      // Set up local (offline) notifications + daily reminder — no server push.
+      enableLocalNotifications(name.trim()).catch(() => {});
 
       router.replace('/');
     } catch (err) {

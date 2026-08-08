@@ -16,6 +16,7 @@ import { ServerRecommendations } from '@/components/server-recommendations';
 import { type RiskLevel } from '@/lib/api';
 import { type RecommendationResult, selectServerChild } from '@/lib/children-api';
 import { childDisplayName } from '@/lib/current-child';
+import { type EngagementMetrics, getEngagementMetrics } from '@/lib/engagement-api';
 import { routeForGateError } from '@/lib/gate';
 import {
   getPanelHistory,
@@ -31,20 +32,23 @@ export default function CaregiverDashboardScreen() {
   const [overview, setOverview] = useState<PanelOverview | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationResult[]>([]);
+  const [metrics, setMetrics] = useState<EngagementMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [ov, hist, recs] = await Promise.all([
+      const [ov, hist, recs, mets] = await Promise.all([
         getPanelOverview(),
         getPanelHistory(),
         getPanelRecommendations(),
+        getEngagementMetrics().catch(() => null),
       ]);
       setOverview(ov);
       setHistory(hist.items ?? []);
       setRecommendations(recs.items ?? []);
+      setMetrics(mets);
     } catch (err) {
       if (routeForGateError(err)) return;
       setError('Unable to load your dashboard. Pull to retry.');
@@ -133,6 +137,20 @@ export default function CaregiverDashboardScreen() {
           <Text style={styles.alertsText}>{overview.open_alerts_count} open alert{overview.open_alerts_count === 1 ? '' : 's'}</Text>
         )}
       </View>
+
+      {/* Engagement activity */}
+      {metrics && (
+        <>
+          <SectionHeader title="Your Activity" />
+          <View style={[styles.card, styles.activityCard]}>
+            <ActivityStat label="Risk checks" value={metrics.by_type?.risk_check ?? 0} />
+            <View style={styles.activityDivider} />
+            <ActivityStat label="Shares" value={metrics.by_type?.share_summary ?? 0} />
+            <View style={styles.activityDivider} />
+            <ActivityStat label="Children added" value={metrics.by_type?.add_child ?? 0} />
+          </View>
+        </>
+      )}
 
       {/* Registered children */}
       <SectionHeader title="Registered Children" actionLabel="Manage" onAction={() => router.push('/children')} />
@@ -233,6 +251,15 @@ function SectionHeader({ title, actionLabel, onAction }: { title: string; action
   );
 }
 
+function ActivityStat({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={styles.activityStat}>
+      <Text style={styles.activityValue}>{value}</Text>
+      <Text style={styles.activityLabel}>{label}</Text>
+    </View>
+  );
+}
+
 function CountPill({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
   return (
     <View style={[styles.countPill, { backgroundColor: bg }]}>
@@ -278,6 +305,11 @@ const styles = StyleSheet.create({
   countValue: { fontSize: 18, fontWeight: '900' },
   countLabel: { fontSize: 11, fontWeight: '700', marginTop: 1 },
   alertsText: { fontSize: 12, color: '#B91C1C', fontWeight: '700', marginTop: 12 },
+  activityCard: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18, marginBottom: 22 },
+  activityStat: { flex: 1, alignItems: 'center' },
+  activityValue: { fontSize: 24, fontWeight: '900', color: '#101828' },
+  activityLabel: { fontSize: 11, color: '#667085', fontWeight: '700', marginTop: 3 },
+  activityDivider: { width: 1, height: 34, backgroundColor: '#E6EBF2' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, marginTop: 4 },
   sectionTitle: { fontSize: 17, fontWeight: '900', color: '#101828' },
   sectionAction: { fontSize: 14, fontWeight: '800', color: '#2F6BFF' },

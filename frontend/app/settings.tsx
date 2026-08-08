@@ -19,7 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@/lib/api';
 import { type Caregiver, fetchMe, logout } from '@/lib/auth-api';
 import { confirmAction } from '@/lib/confirm';
-import { registerPushDevice } from '@/lib/push';
+import { getMlStatus, type MlStatus } from '@/lib/ml-api';
+import { disableLocalNotifications, enableLocalNotifications } from '@/lib/notifications';
 import { routeForGateError } from '@/lib/gate';
 import {
   type ConsentStatus,
@@ -36,22 +37,25 @@ export default function SettingsScreen() {
   const [disclaimer, setDisclaimer] = useState<DisclaimerStatus | null>(null);
   const [locationStatus, setLocationStatus] = useState('undetermined');
   const [notificationStatus, setNotificationStatus] = useState('undetermined');
+  const [mlStatus, setMlStatus] = useState<MlStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const [me, cs, ds, locPerm, notifPerm] = await Promise.all([
+      const [me, cs, ds, locPerm, notifPerm, ml] = await Promise.all([
         fetchMe(),
         getConsentStatus(),
         getDisclaimerStatus(),
         Location.getForegroundPermissionsAsync().catch(() => ({ status: 'undetermined' })),
         Notifications.getPermissionsAsync().catch(() => ({ status: 'undetermined' })),
+        getMlStatus().catch(() => null),
       ]);
       setCaregiver(me);
       setConsent(cs);
       setDisclaimer(ds);
       setLocationStatus(locPerm.status);
       setNotificationStatus(notifPerm.status);
+      setMlStatus(ml);
     } catch (err) {
       routeForGateError(err);
     }
@@ -70,15 +74,18 @@ export default function SettingsScreen() {
     setBusy(true);
     try {
       if (value) {
-        const ok = await registerPushDevice();
+        const ok = await enableLocalNotifications();
         if (!ok) {
           await confirmAction(
-            'Notifications unavailable',
-            'Enable notifications for Child Guard in your device settings to receive alerts.',
+            'Notifications blocked',
+            'Enable notifications for Child Guard in your device settings to receive risk alerts and the daily reminder.',
             'OK'
           );
           await openOSSettings();
         }
+      } else {
+        await disableLocalNotifications();
+        await openOSSettings();
       }
     } finally {
       await refresh();
@@ -173,17 +180,31 @@ export default function SettingsScreen() {
       <View style={styles.card}>
         <View style={styles.statusRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.rowLabel}>Push notifications</Text>
-            <Text style={styles.rowSub}>Risk alerts from Child Guard</Text>
+            <Text style={styles.rowLabel}>Notifications</Text>
+            <Text style={styles.rowSub}>Daily reminder & risk alerts on this device</Text>
           </View>
           <Switch
-            value={notificationStatus === 'granted' && !!consent?.notifications_opt_in}
+            value={notificationStatus === 'granted'}
             onValueChange={toggleNotifications}
             disabled={busy}
           />
         </View>
         <PermissionRow icon="location-outline" label="Location" status={locationStatus} onManage={openOSSettings} last />
       </View>
+
+      {mlStatus && (
+        <>
+          <Text style={styles.sectionLabel}>ABOUT AI</Text>
+          <View style={styles.card}>
+            <InfoRow label="Triage model" value={mlStatus.classifier_loaded ? mlStatus.classifier_version : 'unavailable'} />
+            <InfoRow
+              label="Language model"
+              value={mlStatus.llm_enabled ? `${mlStatus.llm_provider ?? 'enabled'}${mlStatus.llm_model ? ` · ${mlStatus.llm_model}` : ''}` : 'rules only'}
+            />
+            <InfoRow label="Languages" value={(mlStatus.supported_languages ?? []).join(', ').toUpperCase()} last />
+          </View>
+        </>
+      )}
 
       <Text style={styles.sectionLabel}>SESSION</Text>
       <View style={styles.card}>
@@ -217,6 +238,15 @@ function Row({ icon, label, onPress, danger, disabled, last }: { icon: any; labe
       <Text style={[styles.rowText, danger && styles.rowTextDanger]}>{label}</Text>
       <Ionicons name="chevron-forward" size={20} color="#C3CDDB" />
     </Pressable>
+  );
+}
+
+function InfoRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
+  return (
+    <View style={[styles.row, !last && styles.rowDivider]}>
+      <Text style={styles.rowText}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
   );
 }
 
@@ -270,5 +300,6 @@ const styles = StyleSheet.create({
   permOk: { color: '#18A66A' },
   permOff: { color: '#B45309' },
   manageLink: { color: '#2F6BFF', fontSize: 14, fontWeight: '900' },
+  infoValue: { fontSize: 13, color: '#667085', fontWeight: '700', maxWidth: 200, textAlign: 'right' },
   footer: { fontSize: 12, color: '#94A3B8', lineHeight: 18, textAlign: 'center', marginTop: 4 },
 });
